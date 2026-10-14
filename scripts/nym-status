@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # NymVPN tunnel status as one JSON line, with a toast on connect and on a real disconnect.
 # Reads the last tunnel state from the nym-vpnd log (world-readable); never calls nym-vpnc.
+#   nym-status [--no-notify]   --no-notify still records the status, so no stale toast later
 #   status  up | busy | paused | down
 #   state   raw nym-vpnd tunnel state; since, sinceEpoch: when it began (local time)
 #   mode, entryIp, exitIp, entryCc, exitCc, entryPerf, exitPerf: route, only while connected
@@ -43,10 +44,13 @@ else
 fi
 
 # Toast only on stable transitions; busy states keep the previous status.
+# The bar runs one widget per monitor, so the lock keeps two of them from toasting the same change.
 if [[ $status != busy ]]; then
   mkdir -p "$STATE_DIR"
+  exec 9>"$STATE_DIR/lock"
+  flock 9
   prev=$(cat "$STATE_FILE" 2>/dev/null)
-  if [[ -n $prev && $prev != "$status" ]]; then
+  if [[ $1 != --no-notify && -n $prev && $prev != "$status" ]]; then
     case $status in
       up)   notify-send "NymVPN connected" "Traffic protected since $since" ;;
       # No -a: Omarchy lets critical toasts from bare notify-send through Do Not Disturb and never expires them.

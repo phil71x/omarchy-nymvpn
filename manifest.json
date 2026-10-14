@@ -6,13 +6,47 @@
   "author": "phil71x",
   "license": "MIT",
   "description": "NymVPN tunnel status in the bar, with a status card and disconnect alerts",
-  "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
   "barWidget": {
     "displayName": "NymVPN",
     "description": "NymVPN tunnel status, gateways and route",
     "category": "Network",
     "allowMultiple": false,
-    "defaultSection": "right"
+    "defaultSection": "right",
+    "defaults": {
+      "connectedColor": "#4CBB7F",
+      "notifications": true,
+      "refreshIntervalSec": 5
+    },
+    "schema": [
+      {
+        "key": "connectedColor",
+        "type": "string",
+        "label": "Connected color",
+        "description": "Smiley color while the tunnel is up (Nym green by default)",
+        "defaultValue": "#4CBB7F"
+      },
+      {
+        "key": "notifications",
+        "type": "boolean",
+        "label": "Notifications",
+        "description": "Toast on connect and on disconnect",
+        "defaultValue": true
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 2,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 5
+      }
+    ]
   }
 }

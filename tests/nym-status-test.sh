@@ -49,3 +49,19 @@ use_log disconnected; status >/dev/null
 check "no repeated toast" 1 "$(wc -l < "$CALLS")"
 use_log connected; status >/dev/null
 check "toast on reconnect" "notify-send NymVPN connected" "$(tail -1 "$CALLS" | cut -d' ' -f1-3)"
+
+# --no-notify (setting "notifications" off) still records the status.
+reset_calls
+use_log connected; status >/dev/null
+use_log disconnected; bash "$ROOT/scripts/nym-status" --no-notify >/dev/null
+check "no toast with --no-notify" "" "$(calls)"
+use_log disconnected; status >/dev/null
+check "no stale toast after --no-notify" "" "$(calls)"
+
+# Two bar instances (two monitors) polling the same change toast once.
+reset_calls
+use_log connected; status >/dev/null
+use_log disconnected
+for _ in 1 2 3 4; do status >/dev/null & done
+wait
+check "one toast across concurrent instances" 1 "$(grep -c '^notify-send' "$CALLS")"
