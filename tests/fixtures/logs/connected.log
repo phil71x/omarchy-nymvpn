@@ -1,0 +1,5 @@
+2026-10-13T19:25:31.902114Z  INFO nym_vpn_lib::tunnel_state_machine::states::connecting_state: Using entry gateway: EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA, location: BE, performance: 97%
+2026-10-13T19:25:32.028389Z  INFO nym_vpn_lib::tunnel_state_machine::states::connecting_state: Using exit gateway: ExitGwBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB, location: CH, performance: 99%
+2026-10-13T19:25:32.124512Z  INFO nym_vpn_lib::tunnel_state_machine: New tunnel state: Connecting wg to 192.0.2.10:51822 [EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA] → 198.51.100.20:51822 [ExitGwBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB], connecting tunnel, try #0
+2026-10-13T19:25:32.831574Z  INFO nym_vpn_lib::tunnel_state_machine: New tunnel state: Connected wg to 192.0.2.10:51822 [EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA] → 198.51.100.20:51822 [ExitGwBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB]
+2026-10-13T19:25:33.002211Z  INFO nym_vpn_account_controller::controller: New AccountController state: Ready to connect

@@ -1,0 +1,2 @@
+2026-10-14T21:10:34.590492Z  INFO nym_vpn_account_controller::controller: New AccountController state: Syncing
+2026-10-14T21:10:34.590523Z  INFO nym_vpn_account_controller::controller: New AccountController state: Ready to connect

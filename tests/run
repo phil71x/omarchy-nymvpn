@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Runs every tests/*-test.sh, keeps going past a failing file, and lists the failures at the end.
+#   bash tests/run
+
+set -uo pipefail
+
+dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+failed=()
+for test in "$dir"/*-test.sh; do
+  [[ $(basename "$test") == "base-test.sh" ]] && continue
+  echo "# $(basename "$test")"
+  bash "$test" || failed+=("$(basename "$test")")
+done
+
+if (( ${#failed[@]} )); then
+  printf 'Failed: %s\n' "${failed[@]}" >&2
+  exit 1
+fi
+echo "All test files passed"

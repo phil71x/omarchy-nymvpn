@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Shared setup for the plugin's tests, modeled on Omarchy's test/shell.d/base-test.sh:
+# TAP-style pass/skip/fail (the first failure ends the file), fixtures, and fake
+# systemctl, notify-send, pkcheck and nym-vpnc on PATH, so tests never touch the real daemon.
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  echo "source tests/base-test.sh from a test file; do not run it directly" >&2
+  exit 1
+fi
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+FIX="$ROOT/tests/fixtures"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+pass() {
+  printf 'ok - %s\n' "$1"
+}
+
+skip() {
+  printf 'ok - %s # SKIP\n' "$1"
+}
+
+fail() {
+  [[ -n ${2:-} ]] && printf '%s\n' "$2" >&2
+  printf 'not ok - %s\n' "$1" >&2
+  exit 1
+}
+
+# check <description> <expected> <actual>
+check() {
+  if [[ $2 == "$3" ]]; then pass "$1"; else fail "$1" "expected [$2], got [$3]"; fi
+}
+
+mkdir -p "$TMP/bin" "$TMP/logs"
+export PATH="$TMP/bin:$PATH" XDG_RUNTIME_DIR="$TMP/run" XDG_CACHE_HOME="$TMP/cache"
+export NYMVPN_LOG_DIR="$TMP/logs" CALLS="$TMP/calls" FIX
+export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0
+export CACHE_DIR="$XDG_CACHE_HOME/io.github.phil71x.nymvpn"
+
+cat > "$TMP/bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+[[ $FAKE_DAEMON == active ]]
+EOF
+cat > "$TMP/bin/notify-send" <<'EOF'
+#!/usr/bin/env bash
+echo "notify-send $*" >> "$CALLS"
+EOF
+cat > "$TMP/bin/pkcheck" <<'EOF'
+#!/usr/bin/env bash
+echo "pkcheck $*" >> "$CALLS"
+exit "$FAKE_PKCHECK"
+EOF
+cat > "$TMP/bin/nym-vpnc" <<'EOF'
+#!/usr/bin/env bash
+echo "nym-vpnc $*" >> "$CALLS"
+case "$*" in
+  *"tunnel get")     cat "$FIX/nym-vpnc/tunnel-get-$FAKE_MODE.txt" ;;
+  *"gateway get")    cat "$FIX/nym-vpnc/gateway-get.txt" ;;
+  *"gateway list "*) (( FAKE_LIST_FAIL )) && exit 1; cat "$FIX/nym-vpnc/gateway-list-${!#}.md" ;;
+esac
+EOF
+chmod +x "$TMP/bin/"*
+
+# use_log <fixture> [rotated-fixture]: install fixtures as the current (and rotated) nym-vpnd log.
+use_log() {
+  rm -f "$TMP/logs/"*
+  cp "$FIX/logs/$1.log" "$TMP/logs/nym-vpnd.log"
+  if [[ -n ${2:-} ]]; then cp "$FIX/logs/$2.log" "$TMP/logs/nym-vpnd.old.log"; fi
+}
+
+status() { bash "$ROOT/scripts/nym-status"; }
+ctl() { bash "$ROOT/scripts/nym-ctl" "$@"; }
+
+reset_calls() { rm -f "$CALLS" "$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/last-status"; }
+calls() { cat "$CALLS" 2>/dev/null || true; }
+# nym-vpnc calls so far, joined with "|"
+vpnc_calls() { { grep '^nym-vpnc' "$CALLS" 2>/dev/null || true; } | paste -sd'|'; }
