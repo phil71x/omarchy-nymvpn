@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Shapes
 
 // Nym's smiley (disc, capsule eyes, wide smile) on a 28-unit grid, scaled to `size`.
+// Redrawn as vectors from a screenshot of the NymVPN app: the app ships only its "N" logo.
 Item {
   id: face
 

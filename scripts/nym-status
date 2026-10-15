@@ -59,6 +59,9 @@ if [[ $state =~ ^Connected\ ([a-z]+)\ to\ ([0-9.]+)[:\ ].*→\ ([0-9.]+)[:\ ] ]]
   IFS=$'\x1f' read -r exit_load exit_ipv6 exit_name < <(gateway "$exit_list" "${ids[1]:-}")
 fi
 
+# Classes: up = tunnel up; busy = Connecting/Disconnecting; paused = offline (suspend, Wi-Fi lost)
+# with auto-connect, nothing to leak and the daemon reconnects by itself; down = everything else
+# (Disconnected, Error, Offline without auto-connect, daemon stopped).
 if ! systemctl is-active --quiet nym-vpnd; then
   status=down; state="nym-vpnd stopped"
 else
@@ -70,7 +73,9 @@ else
   esac
 fi
 
-# Toast only on stable transitions; busy states keep the previous status.
+# Toast only on stable transitions; busy states keep the previous status. Toasts are sent for
+# up and down only: paused happens at every suspend and would toast several times a day.
+# The state file lives in XDG_RUNTIME_DIR, wiped at reboot, so the first run records a baseline silently.
 # The bar runs one widget per monitor, so the lock keeps two of them from toasting the same change.
 if [[ $status != busy ]]; then
   mkdir -p "$STATE_DIR"
