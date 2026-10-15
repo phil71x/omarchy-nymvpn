@@ -9,7 +9,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 # plugin replaces; "Offline" without auto-connect is down by decision (October 2026):
 #   Connected → up · Connecting, Disconnecting → busy · Offline, auto-connect → paused
 #   Disconnected, Offline, Error → down · nym-vpnd inactive → down
-for case in connected:up connecting:busy disconnecting:busy offline-auto:paused \
+for case in connected:up connected-mixnet:up connecting:busy disconnecting:busy offline-auto:paused \
             offline:down disconnected:down error:down; do
   use_log "${case%%:*}"
   check "status ${case%%:*}" "${case##*:}" "$(status | jq -r .status)"
@@ -18,9 +18,30 @@ done
 use_log connected
 out=$(status)
 check "route fields from the Connected and gateway lines" "wg 192.0.2.10 198.51.100.20 BE 97% CH 99%" \
-  "$(jq -r '[.mode, .entryIp, .exitIp, .entryCc, .entryPerf, .exitCc, .exitPerf] | join(" ")' <<<"$out")"
+  "$(jq -r '[.mode, .entryIp, .exitIp, .entryCc, .entryUptime, .exitCc, .exitUptime] | join(" ")' <<<"$out")"
+check "no load or IPv6 without nym-ctl's gateway cache" "||" "$(jq -r '.entryLoad + "|" + .exitLoad + "|" + .entryIpv6' <<<"$out")"
+
+# Loads come from nym-ctl's gateway cache, matched on the gateway ids of the Connected line.
+mkdir -p "$CACHE_DIR"
+jq -n '{servers: {EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA: "Entry", ExitGwBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB: "Exit"},
+         loads: {EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA: "Medium", ExitGwBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB: "High"},
+         ipv6: {EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA: "2001:db8::10"}}' > "$CACHE_DIR/wg.json"
+out=$(status)
+check "loads from the gateway cache" "Medium|High" "$(jq -r '.entryLoad + "|" + .exitLoad' <<<"$out")"
+check "IPv6 from the gateway cache, None when the gateway has none" "2001:db8::10|None" "$(jq -r '.entryIpv6 + "|" + .exitIpv6' <<<"$out")"
+check "node names from the gateway cache" "Entry|Exit" "$(jq -r '.entryName + "|" + .exitName' <<<"$out")"
+touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
+check "stale cache: no load, names and IPv6 kept" "||Entry|2001:db8::10" \
+  "$(status | jq -r '.entryLoad + "|" + .exitLoad + "|" + .entryName + "|" + .entryIpv6')"
+rm -rf "$CACHE_DIR"
 check "since epoch from the UTC log timestamp" "$(date -d 2026-10-13T19:25:32Z +%s)" "$(jq -r .sinceEpoch <<<"$out")"
 check "tooltip route without gateway ids" "192.0.2.10:51822 → 198.51.100.20:51822" "$(jq -r '.tooltip | split("\n")[1]' <<<"$out")"
+
+use_log connected-mixnet
+out=$(status)
+check "Mixnet route (mode mix, no ports)" "up mix 192.0.2.30 198.51.100.40 FR 99% BE 77%" \
+  "$(jq -r '[.status, .mode, .entryIp, .exitIp, .entryCc, .entryUptime, .exitCc, .exitUptime] | join(" ")' <<<"$out")"
+check "Mixnet tooltip route" "192.0.2.30 → 198.51.100.40" "$(jq -r '.tooltip | split("\n")[1]' <<<"$out")"
 
 use_log disconnected
 check "no route when down" "" "$(status | jq -r '.mode + .entryIp + .entryCc')"

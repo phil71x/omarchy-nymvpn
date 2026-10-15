@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Control nym-vpnd from the status card through nym-vpnc.
-#   nym-ctl config                    current mode and gateway constraints (JSON)
-#   nym-ctl countries                 gateway countries for the current mode (JSON, cached 24 h)
+#   nym-ctl authorized                {"authorized": true} if controls work (no nym-vpnc call)
+#   nym-ctl config                    current mode, gateway constraints and countries (JSON)
+#   nym-ctl countries                 gateway countries for the current mode (JSON, cached 1 h)
 #   nym-ctl connect | disconnect
 #   nym-ctl mode dvpn|mixnet          reconnects if connected
 #   nym-ctl entry|exit auto|random|CC reconnects if connected
@@ -21,7 +22,7 @@ fail() {
 }
 
 usage() {
-  sed -n '2,8s/^# \{0,1\}//p' "$0" >&2
+  sed -n '2,9s/^# \{0,1\}//p' "$0" >&2
   exit 2
 }
 
@@ -53,18 +54,22 @@ list_type() {
   [[ $1 == on ]] && echo wg || echo "mixnet-$2"
 }
 
-# {servers: {id: name}, countries: [{code, name, count}]}, cached per list type.
+# {servers: {id: name}, loads: {id: Low|Medium|High}, ipv6: {id: exit IPv6, when it has one},
+#  countries: [{code, name, count}]},
+# cached per list type for an hour, since server load changes; nym-status reads the loads.
 countries_for() {
   local type=$1 cache="$CACHE_DIR/$1.json"
   mkdir -p "$CACHE_DIR"
-  if [[ ! -s $cache || -n $(find "$cache" -mmin +1440) ]]; then
+  if [[ ! -s $cache || -n $(find "$cache" -mmin +60) ]]; then
     nym-vpnc --table-style markdown gateway list "$type" |
       # Server names may contain "|", so anchor on the performance column "(load: …)".
-      sed -nE 's/^\| ([1-9A-HJ-NP-Za-km-z]{32,}) +\| (.*\S) +\| [^|]*\[([A-Z]{2})\] +\| [^|]*\(load:.*/\1\t\3\t\2/p' |
+      sed -nE 's/^\| ([1-9A-HJ-NP-Za-km-z]{32,}) +\| (.*\S) +\| [^|]*\[([A-Z]{2})\] +\| [^|]*\(load: ([A-Za-z]+)[^|]*\| [^|]*\| ([0-9a-f:]*) *\|.*/\1\t\3\t\2\t\4\t\5/p' |
       jq -R -s --slurpfile iso "$ISO" '
         ($iso[0]["3166-1"] | map({key: .alpha_2, value: (.common_name // .name)}) | from_entries) as $names
-        | split("\n") | map(select(length > 0) | split("\t") | {id: .[0], code: .[1], name: .[2]})
+        | split("\n") | map(select(length > 0) | split("\t") | {id: .[0], code: .[1], name: .[2], load: .[3], ipv6: .[4]})
         | {servers: map({key: .id, value: .name}) | from_entries,
+           loads: map({key: .id, value: .load}) | from_entries,
+           ipv6: map(select(.ipv6 != "") | {key: .id, value: .ipv6}) | from_entries,
            countries: (group_by(.code) | map({code: .[0].code, name: ($names[.[0].code] // (if .[0].code == "XK" then "Kosovo" else .[0].code end)), count: length})
                        | sort_by(.name))}' > "$cache.$$" && mv "$cache.$$" "$cache"
     rm -f "$cache.$$"
@@ -88,11 +93,12 @@ reconnect_if_connected() {
 }
 
 case $1 in
-  config | countries | connect | disconnect | mode | entry | exit) require_authorized ;;
+  authorized | config | countries | connect | disconnect | mode | entry | exit) require_authorized ;;
   *) usage ;;
 esac
 
 case $1 in
+  authorized) jq -nc '{authorized: true}' ;;
   config)
     hop=$(two_hop)
     gw=$(vpnc gateway get)
@@ -105,7 +111,8 @@ case $1 in
       --slurpfile le <(countries_for "$type_entry") --slurpfile lx <(countries_for "$type_exit") '
       {mode: (if $hop == "on" then "dvpn" else "mixnet" end),
        entry: ($entry + {name: ($le[0].servers[$entry.value] // "")}),
-       exit: ($exit + {name: ($lx[0].servers[$exit.value] // "")})}'
+       exit: ($exit + {name: ($lx[0].servers[$exit.value] // "")}),
+       countries: {entry: $le[0].countries, exit: $lx[0].countries}}'
     ;;
   countries)
     hop=$(two_hop)

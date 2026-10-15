@@ -1,12 +1,15 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// NymVPN status card, opened from BarWidget.qml: state, gateways and route.
-// Reads everything from the widget (hostWidget), which polls scripts/nym-status.
+// NymVPN status card, opened from BarWidget.qml: state, gateways and route, read from
+// the widget (hostWidget), which polls scripts/nym-status. When polkit already allows
+// nym-vpnc, the card also connects, disconnects and picks mode and gateways through
+// scripts/nym-ctl; otherwise it stays read-only and offers "Enable controls".
 Panel {
   id: root
   moduleName: "io.github.phil71x.nymvpn"
@@ -19,6 +22,46 @@ Panel {
   readonly property string status: info.status || ""
   readonly property bool connected: status === "up"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  property real now: Date.now()   // ticks every second while the card shows a duration
+
+  // "unknown" until checked on open, then Model.controlsState(): authorized,
+  // not-authorized or unavailable.
+  property string controls: "unknown"
+  property var config: null      // `nym-ctl config`: mode, entry, exit, countries
+  property bool acting: false
+  property string actionError: ""
+  readonly property bool controlsOn: controls === "authorized"
+  readonly property string ctl: hostWidget ? hostWidget.scriptDir + "/nym-ctl" : ""
+
+  onOpenedChanged: if (opened) checkControls()
+
+  function checkControls() {
+    if (ctl && !authProc.running) authProc.running = true
+  }
+
+  // nym-vpnc takes ~6 s per call: config loads in the background, the last one stays shown.
+  function loadConfig() {
+    if (!configProc.running) configProc.running = true
+  }
+
+  function act(args) {
+    if (acting || !ctl) return
+    actionError = ""
+    acting = true
+    actionProc.command = ["bash", ctl].concat(args)
+    actionProc.running = true
+  }
+
+  function setGateway(side, value) {
+    if (value === "server" || !config || value === Model.gatewayValue(config[side])) return
+    act([side, value])
+  }
+
+  function runInTerminal(script) {
+    root.close()
+    root.controls = "unknown"
+    if (hostWidget) hostWidget.runInTerminal(script)
+  }
 
   function open() {
     root.controller.show()
@@ -68,43 +111,75 @@ Panel {
           }
           title: "NymVPN"
           meta: Model.statusLabel(root.status)
-          detail: Model.modeLabel(root.info.mode)
           foreground: root.barForeground
           fontFamily: root.fontFamily
+          trailingControl: root.controlsOn ? powerSwitch : null
         }
 
-        Row {
-          visible: root.connected
-          width: parent.width
-          spacing: Style.space(20)
-
-          Column {
-            width: (parent.width - parent.spacing) / 2
-            spacing: Style.spacing.labelGap
-            InfoPair { label: "Entry"; value: Model.gateway(root.info.entryCc, root.info.entryPerf) }
-            InfoPair { label: "Exit"; value: Model.gateway(root.info.exitCc, root.info.exitPerf) }
+        Component {
+          id: powerSwitch
+          ToggleSwitch {
+            checked: root.connected
+            busy: root.acting || root.status === "busy"
+            foreground: root.barForeground
+            onToggled: root.act([root.connected ? "disconnect" : "connect"])
           }
+        }
 
-          Column {
-            width: (parent.width - parent.spacing) / 2
-            spacing: Style.spacing.labelGap
-            InfoPair { label: "Since"; value: root.info.since || "—" }
-            InfoPair {
-              label: "Duration"
-              value: Model.duration(root.info.sinceEpoch, root.hostWidget ? root.hostWidget.now : Date.now())
+        Item {
+          width: parent.width
+          implicitHeight: timeColumn.implicitHeight
+
+          Grid {
+            id: timeColumn
+            columns: 2
+            columnSpacing: Style.space(8)
+            rowSpacing: Style.spacing.labelGap
+
+            InfoText { text: "Since"; opacity: 0.6 }
+            InfoText { text: root.info.since || "—" }
+            InfoText { visible: root.connected; text: "Duration"; opacity: 0.6 }
+            InfoText {
+              visible: root.connected
+              text: Model.duration(root.info.sinceEpoch, root.now)
             }
           }
-        }
 
-        Column {
-          visible: !root.connected
-          width: parent.width
-          spacing: Style.spacing.labelGap
-          InfoPair { label: "Since"; value: root.info.since || "—" }
-          InfoPair {
-            visible: value !== ""
-            label: "Traffic"
-            value: Model.trafficLabel(root.status)
+          Column {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+
+            InfoText {
+              anchors.right: parent.right
+              text: Model.protectionLabel(root.status)
+              font.pixelSize: Style.font.heading
+              font.bold: true
+              color: root.connected && root.hostWidget ? root.hostWidget.connectedColor
+                   : root.status === "paused" ? root.barForeground
+                   : Color.urgent
+            }
+
+            Row {
+              anchors.right: parent.right
+              visible: root.connected && modeText.text !== ""
+              spacing: Style.space(4)
+
+              InfoText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Model.modeIcon(root.info.mode)
+                font.pixelSize: Style.font.heading
+                color: root.hostWidget ? root.hostWidget.connectedColor : root.barForeground
+              }
+
+              InfoText {
+                id: modeText
+                anchors.verticalCenter: parent.verticalCenter
+                text: Model.modeLabel(root.info.mode)
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                color: root.hostWidget ? root.hostWidget.connectedColor : root.barForeground
+              }
+            }
           }
         }
 
@@ -119,7 +194,7 @@ Panel {
           spacing: Style.space(10)
 
           PanelSectionHeader {
-            text: "ROUTE"
+            text: "GATEWAYS"
             foreground: root.barForeground
             fontFamily: root.fontFamily
           }
@@ -127,24 +202,179 @@ Panel {
           Column {
             width: parent.width
             spacing: Style.spacing.labelGap
-            InfoPair { label: "Entry IP"; value: root.info.entryIp || "—" }
-            InfoPair { label: "Exit IP"; value: root.info.exitIp || "—" }
+            GatewayRow { header: true; ip: "IP"; load: "Load"; uptime: "Uptime" }
+            GatewayRow {
+              label: "Entry"; cc: root.info.entryCc || "—"; ip: root.info.entryIp || "—"; ipv6: root.info.entryIpv6 || ""
+              node: root.info.entryName || ""
+              load: root.info.entryLoad || "—"; uptime: root.info.entryUptime || "—"
+            }
+            GatewayRow {
+              label: "Exit"; cc: root.info.exitCc || "—"; ip: root.info.exitIp || "—"; ipv6: root.info.exitIpv6 || ""
+              node: root.info.exitName || ""
+              load: root.info.exitLoad || "—"; uptime: root.info.exitUptime || "—"
+            }
           }
         }
 
-        Button {
-          width: parent.width
-          text: "Open NymVPN"
-          bordered: true
+        PanelSeparator {
+          visible: root.controlsOn
           foreground: root.barForeground
-          fontFamily: root.fontFamily
-          fontSize: Style.font.bodySmall
-          onClicked: {
-            root.close()
-            if (root.hostWidget) root.hostWidget.openApp()
+        }
+
+        Column {
+          visible: root.controlsOn
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "TUNNEL"
+            foreground: root.barForeground
+            fontFamily: root.fontFamily
+          }
+
+          InfoText {
+            visible: !root.config
+            text: "Loading the gateway lists…"
+            opacity: 0.6
+          }
+
+          Item {
+            visible: !!root.config
+            width: parent.width
+            implicitHeight: modeGroup.implicitHeight
+
+            InfoText {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Mode"
+              opacity: 0.6
+            }
+
+            ButtonGroup {
+              id: modeGroup
+              anchors.right: parent.right
+              options: [
+                { value: "dvpn", label: "dVPN", icon: Model.modeIcon("dvpn") },
+                { value: "mixnet", label: "Mixnet", icon: Model.modeIcon("mixnet") }
+              ]
+              value: root.config ? root.config.mode : ""
+              foreground: root.barForeground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              onChanged: function(value) {
+                if (root.config && value !== root.config.mode) root.act(["mode", value])
+              }
+            }
+          }
+
+          SearchableDropdown {
+            visible: !!root.config
+            width: parent.width
+            label: "Entry"
+            placeholderText: "Search countries…"
+            value: root.config ? Model.gatewayValue(root.config.entry) : ""
+            options: root.config ? Model.gatewayOptions(root.config.countries.entry, root.config.entry) : []
+            fontFamily: root.fontFamily
+            onChanged: function(value) { root.setGateway("entry", value) }
+          }
+
+          SearchableDropdown {
+            visible: !!root.config
+            width: parent.width
+            label: "Exit"
+            placeholderText: "Search countries…"
+            value: root.config ? Model.gatewayValue(root.config.exit) : ""
+            options: root.config ? Model.gatewayOptions(root.config.countries.exit, root.config.exit) : []
+            fontFamily: root.fontFamily
+            onChanged: function(value) { root.setGateway("exit", value) }
+          }
+
+          InfoText {
+            visible: root.actionError !== ""
+            width: parent.width
+            text: root.actionError
+            color: Color.urgent
+            wrapMode: Text.Wrap
+          }
+        }
+
+        Row {
+          width: parent.width
+          spacing: Style.space(8)
+
+          Button {
+            width: secondButton.visible ? (parent.width - parent.spacing) / 2 : parent.width
+            text: "Open App"
+            bordered: true
+            foreground: root.barForeground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            onClicked: {
+              root.close()
+              if (root.hostWidget) root.hostWidget.openApp()
+            }
+          }
+
+          Button {
+            id: secondButton
+            visible: root.controls === "authorized" || root.controls === "not-authorized"
+            width: (parent.width - parent.spacing) / 2
+            text: root.controlsOn ? "Disable controls" : "Enable controls"
+            bordered: true
+            foreground: root.barForeground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            onClicked: root.runInTerminal(root.controlsOn ? "disable-controls" : "enable-controls")
           }
         }
       }
+    }
+  }
+
+  Timer {
+    interval: 1000
+    running: root.opened && root.connected
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.now = Date.now()
+  }
+
+  Process {
+    id: authProc
+    command: ["bash", root.ctl, "authorized"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.controls = Model.controlsState(text)
+        if (root.controlsOn) root.loadConfig()
+      }
+    }
+  }
+
+  Process {
+    id: configProc
+    command: ["bash", root.ctl, "config"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var config = JSON.parse(text)
+          if (config.mode) root.config = config
+          else if (config.error === "not-authorized") root.controls = "not-authorized"
+        } catch (e) {}
+      }
+    }
+  }
+
+  // Gateway lists differ between dVPN and Mixnet, so any change reloads the config.
+  Process {
+    id: actionProc
+    stderr: StdioCollector { id: actionErr; waitForEnd: true }
+    onExited: function(exitCode) {
+      root.acting = false
+      if (exitCode !== 0) {
+        root.actionError = (actionErr.text.trim().split("\n")[0]) || "nym-vpnc failed"
+      }
+      root.loadConfig()
     }
   }
 
@@ -159,6 +389,63 @@ Panel {
 
     InfoText { id: labelText; text: pair.label; opacity: 0.6 }
     InfoText { id: valueText; anchors.right: parent.right; text: pair.value }
+  }
+
+  // One line of the gateways table: side, country, IP, server load (low is better), uptime.
+  // Hovering the country shows the node name, hovering the IP its IPv6 ("None" if it has none);
+  // both come from nym-ctl's gateway cache, so they are unknown without controls.
+  component GatewayRow: Row {
+    id: gw
+    property bool header: false
+    property string label: ""
+    property string cc: ""
+    property string ip: ""
+    property string ipv6: ""
+    property string node: ""
+    property string load: ""
+    property string uptime: ""
+    readonly property real unit: width / 20
+
+    width: parent.width
+
+    InfoText { width: gw.unit * 3; text: gw.label; opacity: 0.6 }
+    InfoText {
+      width: gw.unit * 2.75
+      text: gw.cc
+
+      MouseArea {
+        id: ccMouse
+        anchors.fill: parent
+        enabled: !gw.header
+        hoverEnabled: true
+      }
+
+      PanelToolTip {
+        visible: ccMouse.containsMouse
+        text: gw.node || "Node name unknown"
+        fontFamily: root.fontFamily
+      }
+    }
+    InfoText {
+      width: gw.unit * 7.25
+      text: gw.ip
+      opacity: gw.header ? 0.6 : 1
+
+      MouseArea {
+        id: ipMouse
+        anchors.fill: parent
+        enabled: !gw.header
+        hoverEnabled: true
+      }
+
+      PanelToolTip {
+        visible: ipMouse.containsMouse
+        text: "IPv6: " + (gw.ipv6 || "unknown")
+        fontFamily: root.fontFamily
+      }
+    }
+    InfoText { width: gw.unit * 3; text: gw.load; opacity: gw.header ? 0.6 : 1; horizontalAlignment: Text.AlignRight }
+    InfoText { width: gw.unit * 4; text: gw.uptime; opacity: gw.header ? 0.6 : 1; horizontalAlignment: Text.AlignRight }
   }
 
   component InfoText: Text {

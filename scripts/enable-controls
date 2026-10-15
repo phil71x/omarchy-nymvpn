@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Enable the NymVPN controls of the status card: let this user drive the NymVPN daemon
+# without a password prompt. Opened from the card in Omarchy's floating terminal;
+# explains every change and asks before running sudo. Undo with disable-controls.
+
+set -euo pipefail
+
+DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ID=io.github.phil71x.nymvpn
+RULE_SRC="$DIR/../polkit/50-$ID.rules"
+RULE_DST="/etc/polkit-1/rules.d/50-$ID.rules"
+GROUP=nym-vpn
+ACTION=com.nymvpn.vpnd.unix-access
+
+cat <<EOF
+Enable NymVPN controls
+
+The status card can then connect, disconnect and choose gateways without
+asking for your password each time. Two changes, made with sudo:
+
+  1. Add you ($USER) to the group $GROUP, created by the nym-vpnd package.
+  2. Install the polkit rule $RULE_DST,
+     which lets members of $GROUP in a local, active session use the
+     NymVPN daemon without a password.
+
+Any program running as you can then control NymVPN without a password.
+Undo: "Disable controls" in the card, or bash $DIR/disable-controls
+
+EOF
+
+if ! getent group "$GROUP" >/dev/null; then
+  echo "Group $GROUP not found. Is the nym-vpnd-bin package installed?"
+  exit 1
+fi
+
+if ! gum confirm "Enable controls?"; then
+  echo "Nothing changed."
+  exit 0
+fi
+
+sudo gpasswd -a "$USER" "$GROUP"
+sudo install -m 0644 -o root -g root "$RULE_SRC" "$RULE_DST"
+
+# polkitd reloads rules when the directory changes; give it a moment.
+sleep 1
+if pkcheck -a "$ACTION" -p $$ >/dev/null 2>&1; then
+  echo "Controls enabled. Reopen the NymVPN card."
+else
+  echo "polkit still asks for a password. Check $RULE_DST and journalctl -u polkit."
+  exit 1
+fi

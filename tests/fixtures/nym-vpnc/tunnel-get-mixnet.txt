@@ -1,2 +1,8 @@
 IPv6: on
 Two-hop: off
+Netstack: off
+Circumvention transports: off
+Mixnet traffic configuration: poisson_parameter_for_loop_cover_stream: None, average_packet_delay: None, message_sending_average_delay: None
+disable_poisson_rate: false, disable_background_cover_traffic: false
+min_mixnode_performance: None, min_gateway_mixnet_performance: None
+Gateway independence: enabled notifications: true; different node family: true; different asn: true; different subnet: true

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Disable the NymVPN controls of the status card: undo enable-controls, so the NymVPN
+# daemon asks for a password again. Opened from the card in Omarchy's floating
+# terminal; explains every change and asks before running sudo.
+
+set -euo pipefail
+
+ID=io.github.phil71x.nymvpn
+RULE_DST="/etc/polkit-1/rules.d/50-$ID.rules"
+GROUP=nym-vpn
+ACTION=com.nymvpn.vpnd.unix-access
+
+cat <<EOF
+Disable NymVPN controls
+
+The status card goes back to read-only, and the NymVPN daemon asks for your
+password again. Two changes, made with sudo:
+
+  1. Remove the polkit rule $RULE_DST.
+  2. Remove you ($USER) from the group $GROUP.
+
+EOF
+
+if ! gum confirm "Disable controls?"; then
+  echo "Nothing changed."
+  exit 0
+fi
+
+sudo rm -f "$RULE_DST"
+if id -nG "$USER" | tr ' ' '\n' | grep -qx "$GROUP"; then
+  sudo gpasswd -d "$USER" "$GROUP"
+fi
+
+sleep 1
+if pkcheck -a "$ACTION" -p $$ >/dev/null 2>&1; then
+  echo "polkit still allows NymVPN without a password: another rule grants it."
+  exit 1
+else
+  echo "Controls disabled."
+fi

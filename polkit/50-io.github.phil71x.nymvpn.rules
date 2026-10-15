@@ -1,0 +1,10 @@
+// Installed by the NymVPN Omarchy plugin (io.github.phil71x.nymvpn) through
+// "Enable controls" in its status card, removed by "Disable controls".
+// Lets members of group nym-vpn, in a local and active session, use the NymVPN
+// daemon (polkit action com.nymvpn.vpnd.unix-access) without a password prompt.
+polkit.addRule(function (action, subject) {
+  if (action.id == "com.nymvpn.vpnd.unix-access" &&
+      subject.isInGroup("nym-vpn") && subject.local && subject.active) {
+    return polkit.Result.YES;
+  }
+});

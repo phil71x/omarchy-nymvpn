@@ -1,2 +1,3 @@
 Entry point: Gateway { identity: NodeIdentity { key: "EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" } }
 Exit point: Country { two_letter_iso_country_code: "CH" }
+Residential exit: off

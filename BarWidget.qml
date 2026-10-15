@@ -22,8 +22,8 @@ BarWidget {
   readonly property color discColor: foreground
   readonly property color rimColor: foreground
   readonly property color faceColor: status === "up" ? connectedColor : Color.bar.background
-  readonly property string script: decodeURIComponent(
-    Qt.resolvedUrl("scripts/nym-status").toString().replace(/^file:\/\//, ""))
+  readonly property string scriptDir: decodeURIComponent(
+    Qt.resolvedUrl("scripts").toString().replace(/^file:\/\//, ""))
 
   readonly property bool opened: panelLoader.item
     ? panelLoader.item.opened === true
@@ -57,6 +57,11 @@ BarWidget {
 
   function openApp() {
     if (bar) bar.run("uwsm-app -- nym-vpn.desktop")
+  }
+
+  // Runs enable-controls or disable-controls where sudo can ask for the password.
+  function runInTerminal(script) {
+    if (bar) bar.run("omarchy-launch-floating-terminal-with-presentation bash " + scriptDir + "/" + script)
   }
 
   implicitWidth: button.implicitWidth
@@ -99,7 +104,7 @@ BarWidget {
 
   Process {
     id: proc
-    command: ["bash", root.script].concat(root.setting("notifications", true) ? [] : ["--no-notify"])
+    command: ["bash", root.scriptDir + "/nym-status"].concat(root.setting("notifications", true) ? [] : ["--no-notify"])
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

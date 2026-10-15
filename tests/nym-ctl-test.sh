@@ -25,6 +25,15 @@ check "nym-vpnc missing: error" nym-vpnc-missing "$(jq -r .error <<<"$out")"
 check "nym-vpnc missing: exit code" 3 "$code"
 check "nym-vpnc missing: pkcheck not called" "" "$(calls)"
 
+# authorized: the polkit guard alone, so the card can choose read-only or controls instantly.
+reset_calls
+check "authorized" '{"authorized":true}' "$(ctl authorized)"
+check "authorized: nym-vpnc never called" "" "$(vpnc_calls)"
+FAKE_PKCHECK=2
+code=0; out=$(ctl authorized) || code=$?
+check "authorized when polkit refuses" "not-authorized 3" "$(jq -r .error <<<"$out") $code"
+FAKE_PKCHECK=0
+
 reset_calls
 code=0; ctl bogus 2>/dev/null || code=$?
 check "unknown command: usage exit code" 2 "$code"
@@ -36,25 +45,32 @@ check "dVPN entry countries" "BE:Belgium:1 XK:Kosovo:1 CH:Switzerland:2" \
   "$(jq -r '[.entry[] | "\(.code):\(.name):\(.count)"] | join(" ")' <<<"$out")"
 check "server names containing |" "t-lab | CH|💥Petroff Staking |CH#8💥|Pierrot Gateway | Kosovo" \
   "$(jq -r '[.servers[]] | .[1:] | join("|")' "$CACHE_DIR/wg.json")"
+check "server loads from the performance column" "Low Low High Medium" \
+  "$(jq -r '[.loads[]] | join(" ")' "$CACHE_DIR/wg.json")"
+check "exit IPv6 only for gateways that have one" "2001:db8::10 2001:db8::20 2001:db8::21" \
+  "$(jq -r '[.ipv6[]] | join(" ")' "$CACHE_DIR/wg.json")"
 
 reset_calls
 out=$(ctl config)
-check "config" '{"mode":"dvpn","entry":{"kind":"server","value":"EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","name":"Plain Gateway BE"},"exit":{"kind":"country","value":"CH","name":""}}' "$out"
+check "config" '{"mode":"dvpn","entry":{"kind":"server","value":"EntryGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","name":"Plain Gateway BE"},"exit":{"kind":"country","value":"CH","name":""}}' \
+  "$(jq -c 'del(.countries)' <<<"$out")"
+check "config includes the countries of each side" "BE XK CH|BE XK CH" \
+  "$(jq -r '[.countries.entry, .countries.exit] | map([.[].code] | join(" ")) | join("|")' <<<"$out")"
 check "config reads the fresh cache" "" "$(grep 'gateway list' "$CALLS" || true)"
 
-# Cache lifetime: 24 h.
+# Cache lifetime: 1 h, since server load changes.
 reset_calls
-touch -d '25 hours ago' "$CACHE_DIR/wg.json"
+touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
 ctl countries >/dev/null
 check "stale cache is refetched" 1 "$(grep -c 'gateway list wg' "$CALLS")"
-touch -d '23 hours ago' "$CACHE_DIR/wg.json"
+touch -d '59 minutes ago' "$CACHE_DIR/wg.json"
 ctl countries >/dev/null
-check "cache younger than 24 h is reused" 1 "$(grep -c 'gateway list wg' "$CALLS")"
+check "cache younger than 1 h is reused" 1 "$(grep -c 'gateway list wg' "$CALLS")"
 
 # Failed fetch: no partial or empty cache; a stale cache is still served.
 FAKE_LIST_FAIL=1
 cp "$CACHE_DIR/wg.json" "$TMP/wg.json.before"
-touch -d '25 hours ago' "$CACHE_DIR/wg.json"
+touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
 code=0; out=$(ctl countries) || code=$?
 check "failed fetch serves the stale cache" "0 BE XK CH" "$code $(jq -r '[.entry[].code] | join(" ")' <<<"$out")"
 check "failed fetch keeps the stale cache intact" same "$(cmp -s "$TMP/wg.json.before" "$CACHE_DIR/wg.json" && echo same)"
