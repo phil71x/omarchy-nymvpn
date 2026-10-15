@@ -1,0 +1,2 @@
+# Keep the tests out of GitHub language stats, so the repo shows as QML rather than Shell.
+tests/** -linguist-detectable
