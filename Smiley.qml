@@ -3,8 +3,9 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
 
-// Nym's smiley (disc, capsule eyes, wide smile) on a 28-unit grid, scaled to `size`.
-// Redrawn as vectors from a screenshot of the NymVPN app: the app ships only its "N" logo.
+// Nym's smiley (disc, oval eyes, wide smile with a crossbar at each tip) on a 28-unit grid,
+// scaled to `size`. Eyes and smile traced from the smiley in the Nym docs
+// (nym.com/docs/_next/static/media/smiley.7d68337f.png, 862 px wide).
 Item {
   id: face
 
@@ -13,6 +14,8 @@ Item {
   property color discColor: "black"
   property color rimColor: "grey"
   readonly property real k: size / 28
+  // The traced stroke (0.85 unit) vanishes at bar size, so it never goes below 1.4 px.
+  readonly property real stroke: Math.max(0.85 * k, 1.4)
 
   implicitWidth: size
   implicitHeight: size
@@ -27,40 +30,52 @@ Item {
     border.width: 1
   }
 
-  Repeater {
-    model: [10.5, 17.5]
-
-    Rectangle {
-      required property real modelData
-      width: 3.5 * face.k
-      height: 7.5 * face.k
-      radius: width / 2
-      x: modelData * face.k - width / 2
-      y: 10.5 * face.k - height / 2
-      color: face.featureColor
-      Behavior on color { ColorAnimation { duration: 160 } }
-    }
-  }
-
   Shape {
     anchors.fill: parent
     preferredRendererType: Shape.CurveRenderer
 
+    // Eyes: filled ellipses.
+    Eye { cx: 10.12 }
+    Eye { cx: 17.85 }
+
+    // Smile: a near half circle ending in two short crossbars, outer ends lower.
     ShapePath {
       strokeColor: face.featureColor
-      strokeWidth: 2.2 * face.k
+      strokeWidth: face.stroke
       fillColor: "transparent"
       capStyle: ShapePath.RoundCap
+      joinStyle: ShapePath.RoundJoin
       Behavior on strokeColor { ColorAnimation { duration: 160 } }
 
       PathAngleArc {
         centerX: 14 * face.k
-        centerY: 13 * face.k
-        radiusX: 9.5 * face.k
-        radiusY: 9.5 * face.k
-        startAngle: 15
-        sweepAngle: 150
+        centerY: 15.3 * face.k
+        radiusX: 9.97 * face.k
+        radiusY: 9.97 * face.k
+        startAngle: 5.2
+        sweepAngle: 169.6
       }
+      PathMove { x: 3.02 * face.k; y: 16.4 * face.k }
+      PathLine { x: 5.26 * face.k; y: 15.98 * face.k }
+      PathMove { x: 24.98 * face.k; y: 16.4 * face.k }
+      PathLine { x: 22.74 * face.k; y: 15.98 * face.k }
+    }
+  }
+
+  component Eye: ShapePath {
+    id: eye
+    property real cx
+    strokeColor: "transparent"
+    fillColor: face.featureColor
+    Behavior on fillColor { ColorAnimation { duration: 160 } }
+
+    PathAngleArc {
+      centerX: eye.cx * face.k
+      centerY: 9.92 * face.k
+      radiusX: 1.625 * face.k
+      radiusY: 4.29 * face.k
+      startAngle: 0
+      sweepAngle: 360
     }
   }
 }
