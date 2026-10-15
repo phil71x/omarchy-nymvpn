@@ -22,6 +22,9 @@ Panel {
   readonly property string status: info.status || ""
   readonly property bool connected: status === "up"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  // Theme text color, as the built-in panels use. Not barForeground: on a transparent bar it
+  // follows the wallpaper and turns unreadable on a dark popup.
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
   property real now: Date.now()   // ticks every second while the card shows a duration
 
   // "unknown" until checked on open, then Model.controlsState(): authorized,
@@ -104,14 +107,14 @@ Panel {
           iconComponent: Component {
             Smiley {
               size: 40
-              featureColor: root.hostWidget ? root.hostWidget.faceColor : Color.bar.background
-              discColor: root.hostWidget ? root.hostWidget.discColor : root.barForeground
-              rimColor: root.hostWidget ? root.hostWidget.rimColor : root.barForeground
+              featureColor: root.connected && root.hostWidget ? root.hostWidget.connectedColor : Color.popups.background
+              discColor: root.foreground
+              rimColor: root.foreground
             }
           }
           title: "NymVPN"
           meta: Model.statusLabel(root.status)
-          foreground: root.barForeground
+          foreground: root.foreground
           fontFamily: root.fontFamily
           trailingControl: root.controlsOn ? powerSwitch : null
         }
@@ -121,7 +124,7 @@ Panel {
           ToggleSwitch {
             checked: root.connected
             busy: root.acting || root.status === "busy"
-            foreground: root.barForeground
+            foreground: root.foreground
             onToggled: root.act([root.connected ? "disconnect" : "connect"])
           }
         }
@@ -155,7 +158,7 @@ Panel {
               font.pixelSize: Style.font.heading
               font.bold: true
               color: root.connected && root.hostWidget ? root.hostWidget.connectedColor
-                   : root.status === "paused" ? root.barForeground
+                   : root.status === "paused" ? root.foreground
                    : Color.urgent
             }
 
@@ -168,7 +171,7 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Model.modeIcon(root.info.mode)
                 font.pixelSize: Style.font.heading
-                color: root.hostWidget ? root.hostWidget.connectedColor : root.barForeground
+                color: root.hostWidget ? root.hostWidget.connectedColor : root.foreground
               }
 
               InfoText {
@@ -177,7 +180,7 @@ Panel {
                 text: Model.modeLabel(root.info.mode)
                 font.pixelSize: Style.font.caption
                 font.bold: true
-                color: root.hostWidget ? root.hostWidget.connectedColor : root.barForeground
+                color: root.hostWidget ? root.hostWidget.connectedColor : root.foreground
               }
             }
           }
@@ -185,7 +188,7 @@ Panel {
 
         PanelSeparator {
           visible: root.connected
-          foreground: root.barForeground
+          foreground: root.foreground
         }
 
         Column {
@@ -195,7 +198,7 @@ Panel {
 
           PanelSectionHeader {
             text: "GATEWAYS"
-            foreground: root.barForeground
+            foreground: root.foreground
             fontFamily: root.fontFamily
           }
 
@@ -218,7 +221,7 @@ Panel {
 
         PanelSeparator {
           visible: root.controlsOn
-          foreground: root.barForeground
+          foreground: root.foreground
         }
 
         Column {
@@ -228,7 +231,7 @@ Panel {
 
           PanelSectionHeader {
             text: "TUNNEL"
-            foreground: root.barForeground
+            foreground: root.foreground
             fontFamily: root.fontFamily
           }
 
@@ -257,7 +260,7 @@ Panel {
                 { value: "mixnet", label: "Mixnet", icon: Model.modeIcon("mixnet") }
               ]
               value: root.config ? root.config.mode : ""
-              foreground: root.barForeground
+              foreground: root.foreground
               fontFamily: root.fontFamily
               fontSize: Style.font.bodySmall
               onChanged: function(value) {
@@ -305,7 +308,7 @@ Panel {
             width: secondButton.visible ? (parent.width - parent.spacing) / 2 : parent.width
             text: "Open App"
             bordered: true
-            foreground: root.barForeground
+            foreground: root.foreground
             fontFamily: root.fontFamily
             fontSize: Style.font.bodySmall
             onClicked: {
@@ -320,7 +323,7 @@ Panel {
             width: (parent.width - parent.spacing) / 2
             text: root.controlsOn ? "Disable controls" : "Enable controls"
             bordered: true
-            foreground: root.barForeground
+            foreground: root.foreground
             fontFamily: root.fontFamily
             fontSize: Style.font.bodySmall
             onClicked: root.runInTerminal(root.controlsOn ? "disable-controls" : "enable-controls")
@@ -450,7 +453,7 @@ Panel {
 
   component InfoText: Text {
     textFormat: Text.PlainText
-    color: root.barForeground
+    color: root.foreground
     font.family: root.fontFamily
     font.pixelSize: Style.font.bodySmall
   }
