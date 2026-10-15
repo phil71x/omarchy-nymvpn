@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.phil71x.nymvpn",
   "name": "NymVPN",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "phil71x",
   "license": "MIT",
-  "description": "NymVPN tunnel status in the bar, with a status card and disconnect alerts",
+  "description": "Unofficial NymVPN status in the bar: tunnel state without password prompts, a status card, alerts when the tunnel drops, optional controls",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "NymVPN",
-    "description": "NymVPN tunnel status, gateways and route",
+    "description": "NymVPN tunnel status, gateways and optional controls",
     "category": "Network",
     "allowMultiple": false,
     "defaultSection": "right",
