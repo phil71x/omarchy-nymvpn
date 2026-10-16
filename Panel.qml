@@ -31,6 +31,8 @@ Panel {
   // not-authorized or unavailable.
   property string controls: "unknown"
   property var config: null      // `nym-ctl config`: mode, entry, exit, countries
+  property var previousConfig: null   // restored if an action fails
+  property bool reloadPending: false  // a config read started before the last action: read again
   property bool acting: false
   property string actionError: ""
   readonly property bool controlsOn: controls === "authorized"
@@ -44,20 +46,30 @@ Panel {
 
   // nym-vpnc takes ~6 s per call: config loads in the background, the last one stays shown.
   function loadConfig() {
-    if (!configProc.running) configProc.running = true
+    if (configProc.running) reloadPending = true
+    else configProc.running = true
   }
 
-  function act(args) {
+  // Shows `choice` (a config from Model.withChoice) at once; actionProc rolls it back on failure
+  // and never retries, since a failed nym-vpnc call may still have changed the daemon.
+  function act(args, choice) {
     if (acting || !ctl) return
     actionError = ""
     acting = true
+    previousConfig = config
+    if (choice) config = choice
     actionProc.command = ["bash", ctl].concat(args)
     actionProc.running = true
   }
 
   function setGateway(side, value) {
     if (value === "server" || !config || value === Model.gatewayValue(config[side])) return
-    act([side, value])
+    act([side, value], Model.withChoice(config, side, value))
+  }
+
+  // SearchableDropdown assigns its own value on selection, which breaks the binding to config.
+  function rebindGateway(dropdown, side) {
+    dropdown.value = Qt.binding(function() { return root.config ? Model.gatewayValue(root.config[side]) : "" })
   }
 
   function runInTerminal(script) {
@@ -274,12 +286,14 @@ Panel {
               fontFamily: root.fontFamily
               fontSize: Style.font.bodySmall
               onChanged: function(value) {
-                if (root.config && value !== root.config.mode) root.act(["mode", value])
+                if (root.config && value !== root.config.mode)
+                  root.act(["mode", value], Model.withChoice(root.config, "mode", value))
               }
             }
           }
 
           SearchableDropdown {
+            id: entryDropdown
             visible: !!root.config
             width: parent.width
             label: "Entry"
@@ -287,10 +301,14 @@ Panel {
             value: root.config ? Model.gatewayValue(root.config.entry) : ""
             options: root.config ? Model.gatewayOptions(root.config.countries.entry, root.config.entry) : []
             fontFamily: root.fontFamily
-            onChanged: function(value) { root.setGateway("entry", value) }
+            onChanged: function(value) {
+              root.setGateway("entry", value)
+              root.rebindGateway(entryDropdown, "entry")
+            }
           }
 
           SearchableDropdown {
+            id: exitDropdown
             visible: !!root.config
             width: parent.width
             label: "Exit"
@@ -298,7 +316,10 @@ Panel {
             value: root.config ? Model.gatewayValue(root.config.exit) : ""
             options: root.config ? Model.gatewayOptions(root.config.countries.exit, root.config.exit) : []
             fontFamily: root.fontFamily
-            onChanged: function(value) { root.setGateway("exit", value) }
+            onChanged: function(value) {
+              root.setGateway("exit", value)
+              root.rebindGateway(exitDropdown, "exit")
+            }
           }
 
           InfoText {
@@ -369,12 +390,19 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        // A read that started before or during an action may predate it: wait for the next one.
+        if (root.acting || root.reloadPending) return
         try {
           var config = JSON.parse(text)
           if (config.mode) root.config = config
           else if (config.error === "not-authorized") root.controls = "not-authorized"
         } catch (e) {}
       }
+    }
+    onExited: function() {
+      if (!root.reloadPending) return
+      root.reloadPending = false
+      root.loadConfig()
     }
   }
 
@@ -385,11 +413,13 @@ Panel {
     onExited: function(exitCode) {
       root.acting = false
       if (exitCode !== 0) {
+        root.config = root.previousConfig
         root.actionError = (actionErr.text.trim().split("\n")[0]) || "nym-vpnc failed"
       }
       root.loadConfig()
     }
   }
+
 
   // One "label … value" line of the card.
   component InfoPair: Item {

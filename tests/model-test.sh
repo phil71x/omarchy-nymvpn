@@ -54,5 +54,11 @@ check "gateway options for a country choice" "auto:Auto|random:Random|BE:Belgium
 check "gateway options list the current server first" "server:Plain Gateway BE|auto|random" \
   "$(model '(o => o[0].value + ":" + o[0].label + "|" + o.slice(1).map(x => x.value).join("|"))(M.gatewayOptions([], {kind: "server", value: "Gw1", name: "Plain Gateway BE"}))')"
 
+# Optimistic choices: a copy of the config with the new mode or gateway, the original untouched.
+check "optimistic mode" "mixnet|dvpn" \
+  "$(model '(c => M.withChoice(c, "mode", "mixnet").mode + "|" + c.mode)({mode: "dvpn"})')"
+check "optimistic gateways" "country:CH|random:|auto:|server" \
+  "$(model '(c => [M.withChoice(c, "entry", "CH").entry, M.withChoice(c, "exit", "random").exit, M.withChoice(c, "entry", "auto").entry].map(p => p.kind + ":" + p.value).concat([c.entry.kind]).join("|"))({entry: {kind: "server", value: "Gw1"}, exit: {kind: "auto"}})')"
+
 check "controls state" "authorized|not-authorized|unavailable|unavailable" \
   "$(model '[JSON.stringify({authorized: true}), JSON.stringify({error: "not-authorized"}), JSON.stringify({error: "nym-vpnc-missing"}), "garbage"].map(M.controlsState).join("|")')"

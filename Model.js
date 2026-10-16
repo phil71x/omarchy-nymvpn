@@ -97,6 +97,17 @@ function gatewayOptions(countries, point) {
   return options
 }
 
+// Config showing a choice before nym-vpnc confirms it: "mode" (dvpn | mixnet), or "entry" /
+// "exit" (auto | random | CC). The card rolls back to the previous config if the action fails.
+function withChoice(config, kind, value) {
+  var next = {}
+  for (var key in config) next[key] = config[key]
+  if (kind === "mode") next.mode = value
+  else if (value === "auto" || value === "random") next[kind] = { kind: value, value: "", name: "" }
+  else next[kind] = { kind: "country", value: value, name: "" }
+  return next
+}
+
 if (typeof module !== "undefined") {
-  module.exports = { controlsState, parseStatus, mergeStatus, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
+  module.exports = { controlsState, parseStatus, mergeStatus, withChoice, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
 }
