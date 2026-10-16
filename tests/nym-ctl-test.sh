@@ -39,6 +39,7 @@ reset_calls
 code=0; ctl bogus 2>/dev/null || code=$?
 check "unknown command: usage exit code" 2 "$code"
 check "unknown command: nothing called" "" "$(calls)"
+check "usage lists the whole header" "{\"error\": \"not-authorized\" | \"nym-vpnc-missing\", \"message\": …} and exits 3." "$(ctl bogus 2>&1 | tail -1)"
 
 # Gateway list parsing. Server names may contain "|"; country names come from ISO 3166.
 out=$(ctl countries)
@@ -134,6 +135,12 @@ check "nym-vpnc ignoring SIGTERM: run stopped" "124|NymVPN did not answer within
 check "nym-vpnc ignoring SIGTERM: stopped before it ends" yes "$( (( SECONDS - start < 5 )) && echo yes)"
 check "nym-vpnc ignoring SIGTERM: no process left" "" "$(pgrep -fx 'sleep 9.5' || true)"
 FAKE_HANG_TERM=
+
+# nym-vpnc killed by something else (out of memory) is not reported as a timeout.
+FAKE_KILLED=1
+code=0; err=$(NYMVPN_TIMEOUT=30 ctl connect 2>&1 >/dev/null) || code=$?
+check "nym-vpnc killed before the deadline: no timeout message" "137|" "$code|$(grep -o 'did not answer' <<<"$err" || true)"
+FAKE_KILLED=0
 
 # A gateway list stopped mid-fetch leaves no temporary cache file.
 rm -rf "$CACHE_DIR"

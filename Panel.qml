@@ -407,7 +407,9 @@ Panel {
     }
     stderr: StdioCollector { id: configErr; waitForEnd: true }
     onExited: function(exitCode) {
-      if (exitCode !== 0 && configErr.text.trim() !== "") root.configError = configErr.text.trim().split("\n")[0]
+      // A failed read whose result would have been discarded says nothing about the current config.
+      if (exitCode !== 0 && !root.acting && !root.reloadPending && configErr.text.trim() !== "")
+        root.configError = configErr.text.trim().split("\n")[0]
       if (!root.reloadPending) return
       root.reloadPending = false
       root.loadConfig()

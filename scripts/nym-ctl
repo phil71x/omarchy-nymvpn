@@ -24,7 +24,7 @@ fail() {
 }
 
 usage() {
-  sed -n '2,9s/^# \{0,1\}//p' "$0" >&2
+  sed -n '2,12s/^# \{0,1\}//p' "$0" >&2
   exit 2
 }
 
@@ -59,7 +59,7 @@ list_type() {
 # {servers: {id: name}, loads: {id: Low|Medium|High}, ipv6: {id: exit IPv6, when it has one},
 #  countries: [{code, name, count}]},
 # cached per list type for an hour, since server load changes; nym-status reads the loads.
-# Written through a temporary file named after the deadline run, which removes it if cut off.
+# Written through a temporary file named after the deadline run, which removes any left behind.
 countries_for() {
   local type=$1 cache="$CACHE_DIR/$1.json"
   mkdir -p "$CACHE_DIR"
@@ -75,7 +75,6 @@ countries_for() {
            ipv6: map(select(.ipv6 != "") | {key: .id, value: .ipv6}) | from_entries,
            countries: (group_by(.code) | map({code: .[0].code, name: ($names[.[0].code] // (if .[0].code == "XK" then "Kosovo" else .[0].code end)), count: length})
                        | sort_by(.name))}' > "$cache.$NYMCTL_DEADLINE" && mv "$cache.$NYMCTL_DEADLINE" "$cache"
-    rm -f "$cache.$NYMCTL_DEADLINE"
   fi
   cat "$cache"
 }
@@ -102,11 +101,12 @@ if [[ -z ${NYMCTL_DEADLINE:-} ]]; then
   code=0
   NYMCTL_DEADLINE=$$ timeout -k 5 "$TIMEOUT" "$BASH" "$0" "$@" &
   wait "$!" || code=$?
-  if (( code == 124 || code == 137 )); then
+  # 137 is a timeout only once the deadline passed: nym-vpnc can also be killed by something else.
+  if (( code == 124 || (code == 137 && SECONDS >= TIMEOUT) )); then
     kill -KILL -- "-$!" 2>/dev/null   # timeout leads the run's process group
     echo "NymVPN did not answer within $TIMEOUT s" >&2
   fi
-  rm -f "$CACHE_DIR"/*.json."$$"   # a gateway list cut off mid-write
+  rm -f "$CACHE_DIR"/*.json."$$"   # left by a gateway list that failed or was cut off
   exit "$code"
 fi
 
