@@ -113,3 +113,13 @@ reset_calls
 code=0; ctl entry XYZ 2>/dev/null || code=$?
 check "invalid entry: usage exit code" 2 "$code"
 check "invalid entry: nym-vpnc not called" "" "$(vpnc_calls)"
+
+# A hung nym-vpnc is killed after NYMVPN_TIMEOUT seconds, so the card's controls come back.
+reset_calls
+FAKE_HANG=1
+start=$SECONDS
+code=0; err=$(NYMVPN_TIMEOUT=1 ctl connect 2>&1 >/dev/null) || code=$?
+check "hung nym-vpnc: exit code" 124 "$code"
+check "hung nym-vpnc: message" "nym-vpnc did not answer within 1 s" "$err"
+check "hung nym-vpnc: killed before it ends" yes "$( (( SECONDS - start < 5 )) && echo yes)"
+FAKE_HANG=0

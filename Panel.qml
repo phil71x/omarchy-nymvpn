@@ -414,12 +414,27 @@ Panel {
       root.acting = false
       if (exitCode !== 0) {
         root.config = root.previousConfig
-        root.actionError = (actionErr.text.trim().split("\n")[0]) || "nym-vpnc failed"
+        if (root.actionError === "")
+          root.actionError = (actionErr.text.trim().split("\n")[0]) || "nym-vpnc failed"
       }
       root.loadConfig()
     }
   }
 
+  // nym-ctl limits each nym-vpnc call to 30 s; these catch anything else that hangs (pkcheck,
+  // the script itself), since a stuck action keeps the switch spinning and the controls locked.
+  // nym-ctl config makes up to four nym-vpnc calls, an action two.
+  Watchdog { process: configProc; interval: 150000 }
+  Watchdog { process: actionProc; interval: 90000 }
+
+  component Watchdog: Timer {
+    required property var process
+    running: process.running
+    onTriggered: {
+      root.actionError = "NymVPN did not answer in time. Try again, or open the app."
+      process.running = false
+    }
+  }
 
   // One "label … value" line of the card.
   component InfoPair: Item {

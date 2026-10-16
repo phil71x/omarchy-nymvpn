@@ -6,7 +6,8 @@
 #   nym-ctl connect | disconnect
 #   nym-ctl mode dvpn|mixnet          reconnects if connected
 #   nym-ctl entry|exit auto|random|CC reconnects if connected
-# Each nym-vpnc call takes ~6 s, so callers run this asynchronously.
+# Each nym-vpnc call takes ~6 s, so callers run this asynchronously; a call still running
+# after NYMVPN_TIMEOUT seconds (30) is killed and fails with exit code 124.
 # nym-vpnc is never called unless polkit already allows it: otherwise this prints
 # {"error": "not-authorized" | "nym-vpnc-missing", "message": …} and exits 3.
 
@@ -15,6 +16,7 @@ POLKIT_ACTION=com.nymvpn.vpnd.unix-access
 LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn"
 ISO=/usr/share/iso-codes/json/iso_3166-1.json
+TIMEOUT=${NYMVPN_TIMEOUT:-30}
 
 fail() {
   jq -nc --arg error "$1" --arg message "$2" '{error: $error, message: $message}'
@@ -33,7 +35,15 @@ require_authorized() {
     fail not-authorized "polkit does not allow $POLKIT_ACTION without a password"
 }
 
-vpnc() { nym-vpnc --table-style blank "$@"; }
+# nymvpnc <args>: nym-vpnc with a time limit, so a hung daemon cannot lock the card's controls.
+nymvpnc() {
+  local code=0
+  timeout "$TIMEOUT" nym-vpnc "$@" || code=$?
+  (( code == 124 )) && echo "nym-vpnc did not answer within $TIMEOUT s" >&2
+  return "$code"
+}
+
+vpnc() { nymvpnc --table-style blank "$@"; }
 
 connected() {
   local log line=""
@@ -61,7 +71,7 @@ countries_for() {
   local type=$1 cache="$CACHE_DIR/$1.json"
   mkdir -p "$CACHE_DIR"
   if [[ ! -s $cache || -n $(find "$cache" -mmin +60) ]]; then
-    nym-vpnc --table-style markdown gateway list "$type" |
+    nymvpnc --table-style markdown gateway list "$type" |
       # Server names may contain "|", so anchor on the performance column "(load: …)".
       sed -nE 's/^\| ([1-9A-HJ-NP-Za-km-z]{32,}) +\| (.*\S) +\| [^|]*\[([A-Z]{2})\] +\| [^|]*\(load: ([A-Za-z]+)[^|]*\| [^|]*\| ([0-9a-f:]*) *\|.*/\1\t\3\t\2\t\4\t\5/p' |
       jq -R -s --slurpfile iso "$ISO" '
