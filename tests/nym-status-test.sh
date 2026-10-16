@@ -51,11 +51,13 @@ use_log no-state connected
 check "falls back to the rotated log" up "$(status | jq -r .status)"
 
 rm -f "$TMP/logs/"*
-check "no log at all is unknown" unknown "$(status | jq -r .status)"
+check "no log at all is unknown, no made-up since" "unknown|Cannot read the NymVPN log||" \
+  "$(status | jq -r '[.status, .reason, .since, .sinceEpoch] | join("|")')"
 use_log no-state
 check "no state line is unknown" unknown "$(status | jq -r .status)"
 echo "2026-10-13T19:25:32.000000Z  INFO nym_vpnd::tunnel_state_machine: New tunnel state: Hibernating" > "$TMP/logs/nym-vpnd.log"
-check "unlisted state is unknown" "unknown|Hibernating" "$(status | jq -r '.status + "|" + .state')"
+check "unlisted state is unknown, reason names it" "unknown|Hibernating|Unknown NymVPN state: Hibernating" \
+  "$(status | jq -r '[.status, .state, .reason] | join("|")')"
 chmod 000 "$TMP/logs/nym-vpnd.log"
 if [[ -r $TMP/logs/nym-vpnd.log ]]; then skip "unreadable log is unknown (running as root)"
 else check "unreadable log is unknown" unknown "$(status | jq -r .status)"; fi
@@ -80,16 +82,28 @@ check "no repeated toast" 1 "$(wc -l < "$CALLS")"
 use_log connected; status >/dev/null
 check "toast on reconnect" "notify-send NymVPN connected" "$(tail -1 "$CALLS" | cut -d' ' -f1-3)"
 
-# Unknown never toasts and keeps the recorded status: back to the same state, no toast either.
+# Unknown sends one normal (not critical) toast per spell and keeps the recorded status.
+reset_calls
+use_log connected; status >/dev/null
+rm -f "$TMP/logs/"*; status >/dev/null; status >/dev/null
+check "one normal toast when the log disappears" "notify-send NymVPN status unknown Cannot read the NymVPN log." "$(calls | cut -d' ' -f1-9)"
+check "unknown toast sent once per spell" 1 "$(wc -l < "$CALLS")"
+use_log connected; status >/dev/null
+check "no toast when the log comes back unchanged" 1 "$(wc -l < "$CALLS")"
+rm -f "$TMP/logs/"*; status >/dev/null
+check "a new unknown spell toasts again" 2 "$(wc -l < "$CALLS")"
+reset_calls
+rm -f "$TMP/logs/"*; status >/dev/null
+check "no unknown toast without a known status first" "" "$(calls)"
+reset_calls
+use_log connected; status >/dev/null
+rm -f "$TMP/logs/"*; bash "$ROOT/scripts/nym-status" --no-notify >/dev/null; status >/dev/null
+check "no unknown toast with --no-notify, nor stale afterwards" "" "$(calls)"
 reset_calls
 use_log connected; status >/dev/null
 rm -f "$TMP/logs/"*; status >/dev/null
-check "no toast when the log disappears" "" "$(calls)"
-use_log connected; status >/dev/null
-check "no toast when the log comes back unchanged" "" "$(calls)"
-rm -f "$TMP/logs/"*; status >/dev/null
 use_log disconnected; status >/dev/null
-check "toast on a real change across an unknown spell" "notify-send -u critical NymVPN disconnected" "$(cut -d' ' -f1-5 "$CALLS")"
+check "toast on a real change across an unknown spell" "notify-send -u critical NymVPN disconnected" "$(grep critical "$CALLS" | cut -d' ' -f1-5)"
 
 # --no-notify (setting "notifications" off) still records the status.
 reset_calls

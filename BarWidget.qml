@@ -17,7 +17,7 @@ BarWidget {
   property real now: Date.now()
   property bool rerun: false   // a log change arrived while nym-status was running
 
-  readonly property string status: info.status || ""
+  readonly property string status: Model.shownStatus(info)
   readonly property color foreground: bar ? bar.barForeground : Color.foreground
   readonly property color connectedColor: setting("connectedColor", "#4CBB7F")
   // A disc in the bar's icon color, like the other widgets; eyes and smile in the

@@ -13,7 +13,7 @@ Unofficial [NymVPN](https://nym.com) status for the [Omarchy](https://omarchy.or
 
 - **Bar smiley** — Nym's smiley, with green eyes and smile while the tunnel is up and cut out in the bar color otherwise. Hover for the state and route; left click opens the status card; right click opens the NymVPN app.
 - **Status card** — state, connected since, duration, Protected / Unprotected / No network, dVPN or Mixnet mode, and the entry and exit gateways (country, IP, load, uptime; hover for IPv6 and node name).
-- **Toasts** — "NymVPN connected" when the tunnel comes up, and a critical "NymVPN disconnected" toast when it drops. The critical toast shows through Do Not Disturb and stays until dismissed. Suspend and Wi-Fi loss, where NymVPN reconnects by itself, do not toast.
+- **Toasts** — "NymVPN connected" when the tunnel comes up, and a critical "NymVPN disconnected" toast when it drops. The critical toast shows through Do Not Disturb and stays until dismissed. Suspend and Wi-Fi loss, where NymVPN reconnects by itself, do not toast. When the tunnel state cannot be read (log unreadable, or a state the plugin does not know), the widget shows "Unknown", never "Protected", and sends one normal "NymVPN status unknown" toast.
 - **Optional controls** — once enabled, the card can connect and disconnect, switch between dVPN and Mixnet, and pick the entry and exit gateway (Auto, Random, or a country).
 
 The plugin reads the tunnel state from the NymVPN daemon log, `/var/log/nym-vpnd/nym-vpnd.log`. It works whether the NymVPN app is open or closed, and never calls the polkit-protected `nym-vpnc` just to show the state, so it never triggers a password prompt.
@@ -62,7 +62,7 @@ Each control action takes a few seconds, the time `nym-vpnc` takes to answer. A 
 Settings are fields on the widget's entry in `~/.config/omarchy/shell.json`:
 
 - **Connected color** (`connectedColor`, default `#4CBB7F`, a softened Nym green) — smiley color while the tunnel is up.
-- **Notifications** (`notifications`, default on) — connect and disconnect toasts.
+- **Notifications** (`notifications`, default on) — connect, disconnect and status unknown toasts.
 - **Fallback check** (`refreshIntervalSec`, default 30, 2 to 60) — the status follows the daemon log as soon as it changes; this periodic check also catches a stopped daemon.
 
 Open and close the card from a keybinding or a script:

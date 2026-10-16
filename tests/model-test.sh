@@ -43,6 +43,10 @@ check "unknown with nothing before stays unknown" "unknown|" \
   "$(model '(s => s.status + "|" + (s.stale || ""))(M.mergeStatus({}, {status: "unknown"}))')"
 check "a known reading replaces a stale one" "down|" \
   "$(model '(s => s.status + "|" + (s.stale || ""))(M.mergeStatus({status: "up", stale: true}, {status: "down"}))')"
+check "unknown keeps the new reason" "Cannot read the NymVPN log" \
+  "$(model 'M.mergeStatus({status: "up"}, {status: "unknown", reason: "Cannot read the NymVPN log"}).reason')"
+check "shown status: never a stale one" "unknown|up|down|" \
+  "$(model '[{status: "up", stale: true}, {status: "up"}, {status: "down"}, {}].map(M.shownStatus).join("|")')"
 check "merge leaves the previous status untouched" "" \
   "$(model '(p => (M.mergeStatus(p, {status: "unknown"}), p.stale || ""))({status: "up"})')"
 

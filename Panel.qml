@@ -19,8 +19,10 @@ Panel {
   property var hostWidget: null
 
   readonly property var info: hostWidget ? hostWidget.info : ({})
-  readonly property string status: info.status || ""
+  readonly property string status: Model.shownStatus(info)
   readonly property bool connected: status === "up"
+  // Gateways stay listed while the state is unknown, as the last known route.
+  readonly property bool showRoute: info.status === "up"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   // Theme text color, as the built-in panels use. Not barForeground: on a transparent bar it
   // follows the wallpaper and turns unreadable on a dark popup.
@@ -170,7 +172,7 @@ Panel {
               font.pixelSize: Style.font.heading
               font.bold: true
               color: root.connected && root.hostWidget ? root.hostWidget.connectedColor
-                   : root.status === "paused" ? root.foreground
+                   : root.status === "paused" || root.status === "unknown" ? root.foreground
                    : Color.urgent
             }
 
@@ -199,22 +201,21 @@ Panel {
         }
 
         InfoText {
-          visible: root.status === "unknown" || root.info.stale === true
+          visible: root.status === "unknown"
           width: parent.width
-          text: root.status === "unknown"
-            ? "Cannot read the NymVPN log: tunnel state unknown."
-            : "Cannot read the NymVPN log: showing the last known state."
+          text: (root.info.reason || "Tunnel state unknown")
+            + (root.info.stale ? ". Showing the last known details." : ".")
           wrapMode: Text.Wrap
           opacity: 0.6
         }
 
         PanelSeparator {
-          visible: root.connected
+          visible: root.showRoute
           foreground: root.foreground
         }
 
         Column {
-          visible: root.connected
+          visible: root.showRoute
           width: parent.width
           spacing: Style.space(10)
 

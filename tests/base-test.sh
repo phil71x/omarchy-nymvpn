@@ -73,7 +73,7 @@ use_log() {
 status() { bash "$ROOT/scripts/nym-status"; }
 ctl() { bash "$ROOT/scripts/nym-ctl" "$@"; }
 
-reset_calls() { rm -f "$CALLS" "$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/last-status"; }
+reset_calls() { rm -f "$CALLS" "$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/"{last-status,unknown-notified}; }
 calls() { cat "$CALLS" 2>/dev/null || true; }
 # nym-vpnc calls so far, joined with "|"
 vpnc_calls() { { grep '^nym-vpnc' "$CALLS" 2>/dev/null || true; } | paste -sd'|'; }

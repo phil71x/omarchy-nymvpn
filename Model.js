@@ -9,11 +9,17 @@ function parseStatus(text) {
   return { status: "unknown", tooltip: "NymVPN: unreadable status" }
 }
 
-// Status to show after a new reading: an unknown reading keeps the last good one, marked
-// stale with the new tooltip, so a log hiccup neither alarms nor blanks the card.
+// Status after a new reading: an unknown reading keeps the last known details (gateways, since),
+// marked stale with the new reason and tooltip, so a log hiccup does not blank the card.
 function mergeStatus(prev, next) {
   if (next.status !== "unknown" || !prev || !prev.status || prev.status === "unknown") return next
-  return Object.assign({}, prev, { stale: true, tooltip: next.tooltip })
+  return Object.assign({}, prev, { stale: true, reason: next.reason, tooltip: next.tooltip })
+}
+
+// Status the smiley and labels show: never the stale one, so the widget never claims a
+// protection it cannot see.
+function shownStatus(info) {
+  return info.stale ? "unknown" : (info.status || "")
 }
 
 function statusLabel(status) {
@@ -104,5 +110,5 @@ function withChoice(config, kind, value) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { controlsState, parseStatus, mergeStatus, withChoice, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
+  module.exports = { controlsState, parseStatus, mergeStatus, shownStatus, withChoice, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
 }

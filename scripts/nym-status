@@ -3,7 +3,8 @@
 # Reads the last tunnel state from the nym-vpnd log (world-readable); never calls nym-vpnc.
 #   nym-status [--no-notify]   --no-notify still records the status, so no stale toast later
 #   status  up | busy | paused | down | unknown (no tunnel state in a readable log, or a state
-#           this script does not know: no toast, the widget keeps the last good state)
+#           this script does not know: one normal toast, the card keeps the last details)
+#   reason  why the status is unknown, empty otherwise
 #   state   raw nym-vpnd tunnel state; since, sinceEpoch: when it began (local time)
 #   mode (wg | mix), entryIp, exitIp, entryCc, exitCc, entryUptime, exitUptime: route, only while connected
 #   entryName, exitName, entryLoad, exitLoad, entryIpv6, exitIpv6: from nym-ctl's gateway cache,
@@ -14,6 +15,7 @@ LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/io.github.phil71x.nymvpn"
 STATE_FILE="$STATE_DIR/last-status"
+UNKNOWN_FILE="$STATE_DIR/unknown-notified"   # the unknown toast was sent for this spell
 
 line=""
 for log in "$LOG_DIR/nym-vpnd.log" "$LOG_DIR/nym-vpnd.old.log"; do
@@ -23,8 +25,11 @@ for log in "$LOG_DIR/nym-vpnd.log" "$LOG_DIR/nym-vpnd.old.log"; do
 done
 
 state=${line#*New tunnel state: }
-since=$(date -d "${line%% *}" +%H:%M 2>/dev/null)
-since_epoch=$(date -d "${line%% *}" +%s 2>/dev/null)
+since="" since_epoch=""
+if [[ -n $line ]]; then   # date -d "" would give today's midnight
+  since=$(date -d "${line%% *}" +%H:%M 2>/dev/null)
+  since_epoch=$(date -d "${line%% *}" +%s 2>/dev/null)
+fi
 
 # Route details for the status card (only meaningful while connected).
 mode="" entry_ip="" exit_ip="" entry_cc="" exit_cc="" entry_uptime="" exit_uptime="" entry_load="" exit_load="" entry_ipv6="" exit_ipv6="" entry_name="" exit_name=""
@@ -64,6 +69,7 @@ fi
 # with auto-connect, nothing to leak and the daemon reconnects by itself; down = Disconnected,
 # Error, Offline without auto-connect, daemon stopped; unknown = no state line (log missing,
 # unreadable or reworded) or a state not listed here, so no false alarm.
+reason=""
 if ! systemctl is-active --quiet nym-vpnd; then
   status=down; state="nym-vpnd stopped"
 else
@@ -72,27 +78,38 @@ else
     Connecting* | Disconnecting*)       status=busy ;;
     "Offline, auto-connect"*)           status=paused ;;
     Disconnected* | Error* | Offline*)  status=down ;;
-    *)                                  status=unknown ;;
+    "")                                 status=unknown; reason="Cannot read the NymVPN log" ;;
+    *)                                  status=unknown; reason="Unknown NymVPN state: ${state%%,*}" ;;
   esac
 fi
 
 # Toast only on stable transitions; busy and unknown keep the previous status. Toasts are sent for
 # up and down only: paused happens at every suspend and would toast several times a day.
+# Unknown gets one normal toast per spell, not a critical one: the tunnel may be fine, but a
+# drop would go unseen until the status is known again.
 # The state file lives in XDG_RUNTIME_DIR, wiped at reboot, so the first run records a baseline silently.
 # The bar runs one widget per monitor, so the lock keeps two of them from toasting the same change.
-if [[ $status != busy && $status != unknown ]]; then
+if [[ $status != busy ]]; then
   mkdir -p "$STATE_DIR"
   exec 9>"$STATE_DIR/lock"
   flock 9
   prev=$(cat "$STATE_FILE" 2>/dev/null)
-  if [[ $1 != --no-notify && -n $prev && $prev != "$status" ]]; then
-    case $status in
-      up)   notify-send "NymVPN connected" "Traffic protected since $since" ;;
-      # No -a: Omarchy lets critical toasts from bare notify-send through Do Not Disturb and never expires them.
-      down) notify-send -u critical "NymVPN disconnected" "Traffic NOT protected. Open NymVPN to reconnect." ;;
-    esac
+  if [[ $status == unknown ]]; then
+    if [[ $1 != --no-notify && -n $prev && ! -e $UNKNOWN_FILE ]]; then
+      notify-send "NymVPN status unknown" "$reason. A disconnect would not be detected."
+    fi
+    touch "$UNKNOWN_FILE"
+  else
+    if [[ $1 != --no-notify && -n $prev && $prev != "$status" ]]; then
+      case $status in
+        up)   notify-send "NymVPN connected" "Traffic protected since $since" ;;
+        # No -a: Omarchy lets critical toasts from bare notify-send through Do Not Disturb and never expires them.
+        down) notify-send -u critical "NymVPN disconnected" "Traffic NOT protected. Open NymVPN to reconnect." ;;
+      esac
+    fi
+    echo "$status" > "$STATE_FILE"
+    rm -f "$UNKNOWN_FILE"
   fi
-  echo "$status" > "$STATE_FILE"
 fi
 
 route=$(sed -E 's/ \[[^]]*\]//g; s/^Connected [a-z]+ to //' <<<"$state")
@@ -101,17 +118,17 @@ case $status in
   busy)   tooltip="NymVPN: ${state%%,*}…" ;;
   paused) tooltip="NymVPN: offline, will reconnect automatically" ;;
   down)   tooltip="NymVPN: DISCONNECTED since $since, not protected" ;;
-  unknown) tooltip="NymVPN: cannot read the tunnel state from the nym-vpnd log" ;;
+  unknown) tooltip="NymVPN: $reason" ;;
 esac
 
-jq -nc --arg status "$status" --arg tooltip "$tooltip" \
+jq -nc --arg status "$status" --arg reason "$reason" --arg tooltip "$tooltip" \
   --arg state "$state" --arg since "$since" --arg sinceEpoch "$since_epoch" --arg mode "$mode" \
   --arg entryIp "$entry_ip" --arg exitIp "$exit_ip" --arg entryCc "$entry_cc" --arg exitCc "$exit_cc" \
   --arg entryUptime "$entry_uptime" --arg exitUptime "$exit_uptime" \
   --arg entryLoad "$entry_load" --arg exitLoad "$exit_load" \
   --arg entryIpv6 "$entry_ipv6" --arg exitIpv6 "$exit_ipv6" \
   --arg entryName "$entry_name" --arg exitName "$exit_name" \
-  '{status: $status, tooltip: $tooltip, state: $state, since: $since,
+  '{status: $status, reason: $reason, tooltip: $tooltip, state: $state, since: $since,
     sinceEpoch: $sinceEpoch, mode: $mode, entryIp: $entryIp, exitIp: $exitIp,
     entryCc: $entryCc, exitCc: $exitCc, entryUptime: $entryUptime, exitUptime: $exitUptime,
     entryLoad: $entryLoad, exitLoad: $exitLoad, entryIpv6: $entryIpv6, exitIpv6: $exitIpv6,
