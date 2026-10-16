@@ -59,8 +59,8 @@ check "gateway options list the current server first" "server:Plain Gateway BE|a
   "$(model '(o => o[0].value + ":" + o[0].label + "|" + o.slice(1).map(x => x.value).join("|"))(M.gatewayOptions([], {kind: "server", value: "Gw1", name: "Plain Gateway BE"}))')"
 
 # Optimistic choices: a copy of the config with the new mode or gateway, the original untouched.
-check "optimistic mode" "mixnet|dvpn" \
-  "$(model '(c => M.withChoice(c, "mode", "mixnet").mode + "|" + c.mode)({mode: "dvpn"})')"
+check "optimistic mode drops the old mode's countries" "mixnet|null|dvpn|1" \
+  "$(model '(c => (n => [n.mode, String(n.countries), c.mode, c.countries.entry.length].join("|"))(M.withChoice(c, "mode", "mixnet")))({mode: "dvpn", countries: {entry: [{code: "CH"}], exit: []}})')"
 check "optimistic gateways" "country:CH|random:|auto:|server" \
   "$(model '(c => [M.withChoice(c, "entry", "CH").entry, M.withChoice(c, "exit", "random").exit, M.withChoice(c, "entry", "auto").entry].map(p => p.kind + ":" + p.value).concat([c.entry.kind]).join("|"))({entry: {kind: "server", value: "Gw1"}, exit: {kind: "auto"}})')"
 

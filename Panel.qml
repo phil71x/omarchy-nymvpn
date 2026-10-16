@@ -24,6 +24,7 @@ Panel {
   // Last known state up: the gateways stay listed, as the last known route, and the switch
   // stays on, so it disconnects, while the state is unknown.
   readonly property bool lastUp: info.status === "up"
+  readonly property bool knownState: !!info.status && info.status !== "unknown"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   // Theme text color, as the built-in panels use. Not barForeground: on a transparent bar it
   // follows the wallpaper and turns unreadable on a dark popup.
@@ -35,7 +36,7 @@ Panel {
   property string controls: "unknown"
   property var config: null      // `nym-ctl config`: mode, entry, exit, countries
   property var previousConfig: null   // restored if an action fails
-  property bool reloadPending: false  // a config read started before the last action: read again
+  property bool reloadPending: false  // an action started during a config read: read again
   property bool acting: false
   property string actionError: ""
   property string configError: ""   // the last config read failed; cleared by the next good one
@@ -50,8 +51,7 @@ Panel {
 
   // nym-vpnc takes ~6 s per call: config loads in the background, the last one stays shown.
   function loadConfig() {
-    if (configProc.running) reloadPending = true
-    else configProc.running = true
+    if (!configProc.running) configProc.running = true
   }
 
   // Shows `choice` (a config from Model.withChoice) at once; actionProc rolls it back on failure
@@ -62,6 +62,7 @@ Panel {
     acting = true
     previousConfig = config
     if (choice) config = choice
+    if (configProc.running) reloadPending = true
     actionProc.command = ["bash", ctl].concat(args)
     actionProc.running = true
   }
@@ -132,7 +133,8 @@ Panel {
           meta: Model.statusLabel(root.status)
           foreground: root.foreground
           fontFamily: root.fontFamily
-          trailingControl: root.controlsOn ? powerSwitch : null
+          // No switch before any known state: on or off would be a guess.
+          trailingControl: root.controlsOn && root.knownState ? powerSwitch : null
         }
 
         Component {
@@ -261,7 +263,7 @@ Panel {
           }
 
           InfoText {
-            visible: !root.config
+            visible: !root.config || !root.config.countries
             text: "Loading the gateway lists…"
             opacity: 0.6
           }
@@ -297,12 +299,12 @@ Panel {
 
           SearchableDropdown {
             id: entryDropdown
-            visible: !!root.config
+            visible: !!root.config && !!root.config.countries
             width: parent.width
             label: "Entry"
             placeholderText: "Search countries…"
             value: root.config ? Model.gatewayValue(root.config.entry) : ""
-            options: root.config ? Model.gatewayOptions(root.config.countries.entry, root.config.entry) : []
+            options: root.config && root.config.countries ? Model.gatewayOptions(root.config.countries.entry, root.config.entry) : []
             fontFamily: root.fontFamily
             onChanged: function(value) {
               root.setGateway("entry", value)
@@ -312,12 +314,12 @@ Panel {
 
           SearchableDropdown {
             id: exitDropdown
-            visible: !!root.config
+            visible: !!root.config && !!root.config.countries
             width: parent.width
             label: "Exit"
             placeholderText: "Search countries…"
             value: root.config ? Model.gatewayValue(root.config.exit) : ""
-            options: root.config ? Model.gatewayOptions(root.config.countries.exit, root.config.exit) : []
+            options: root.config && root.config.countries ? Model.gatewayOptions(root.config.countries.exit, root.config.exit) : []
             fontFamily: root.fontFamily
             onChanged: function(value) {
               root.setGateway("exit", value)

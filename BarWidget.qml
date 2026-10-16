@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -130,7 +131,7 @@ BarWidget {
 
   // Not loaded (the log grows to megabytes), only watched; rotation counts as a change.
   FileView {
-    path: "/var/log/nym-vpnd/nym-vpnd.log"
+    path: (Quickshell.env("NYMVPN_LOG_DIR") || "/var/log/nym-vpnd") + "/nym-vpnd.log"
     preload: false
     watchChanges: true
     printErrors: false

@@ -101,9 +101,13 @@ function gatewayOptions(countries, point) {
 
 // Config showing a choice before nym-vpnc confirms it: "mode" (dvpn | mixnet), or "entry" /
 // "exit" (auto | random | CC). The card rolls back to the previous config if the action fails.
+// A mode change drops the country lists, which belong to the old mode, until config reloads.
 function withChoice(config, kind, value) {
   var next = Object.assign({}, config)
-  if (kind === "mode") next.mode = value
+  if (kind === "mode") {
+    next.mode = value
+    next.countries = null
+  }
   else if (value === "auto" || value === "random") next[kind] = { kind: value, value: "", name: "" }
   else next[kind] = { kind: "country", value: value, name: "" }
   return next
