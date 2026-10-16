@@ -21,7 +21,7 @@
     "defaults": {
       "connectedColor": "#4CBB7F",
       "notifications": true,
-      "refreshIntervalSec": 30
+      "refreshIntervalSec": 5
     },
     "schema": [
       {
@@ -45,8 +45,8 @@
         "min": 2,
         "max": 60,
         "step": 1,
-        "defaultValue": 30,
-        "description": "Status follows the NymVPN log at once; this check also catches a stopped daemon"
+        "defaultValue": 5,
+        "description": "Status follows the NymVPN log at once; this check also catches a stopped or crashed daemon"
       }
     ]
   }

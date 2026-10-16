@@ -17,9 +17,10 @@ STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/io.github.phil71x.nymvpn"
 STATE_FILE="$STATE_DIR/last-status"
 UNKNOWN_FILE="$STATE_DIR/unknown-notified"   # the unknown toast was sent for this spell
 
-line=""
+line="" readable=false
 for log in "$LOG_DIR/nym-vpnd.log" "$LOG_DIR/nym-vpnd.old.log"; do
   [[ -r $log ]] || continue
+  readable=true
   line=$(tac "$log" | grep -m1 'tunnel_state_machine: New tunnel state:')
   [[ -n $line ]] && break
 done
@@ -78,7 +79,8 @@ else
     Connecting* | Disconnecting*)       status=busy ;;
     "Offline, auto-connect"*)           status=paused ;;
     Disconnected* | Error* | Offline*)  status=down ;;
-    "")                                 status=unknown; reason="Cannot read the NymVPN log" ;;
+    "")                                 status=unknown; reason="No tunnel state in the NymVPN log"
+                                        $readable || reason="Cannot read the NymVPN log" ;;
     *)                                  status=unknown; reason="Unknown NymVPN state: ${state%%,*}" ;;
   esac
 fi

@@ -21,8 +21,9 @@ Panel {
   readonly property var info: hostWidget ? hostWidget.info : ({})
   readonly property string status: Model.shownStatus(info)
   readonly property bool connected: status === "up"
-  // Gateways stay listed while the state is unknown, as the last known route.
-  readonly property bool showRoute: info.status === "up"
+  // Last known state up: the gateways stay listed, as the last known route, and the switch
+  // stays on, so it disconnects, while the state is unknown.
+  readonly property bool lastUp: info.status === "up"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   // Theme text color, as the built-in panels use. Not barForeground: on a transparent bar it
   // follows the wallpaper and turns unreadable on a dark popup.
@@ -137,10 +138,10 @@ Panel {
         Component {
           id: powerSwitch
           ToggleSwitch {
-            checked: root.connected
+            checked: root.lastUp
             busy: root.acting || root.status === "busy"
             foreground: root.foreground
-            onToggled: root.act([root.connected ? "disconnect" : "connect"])
+            onToggled: root.act([root.lastUp ? "disconnect" : "connect"])
           }
         }
 
@@ -211,12 +212,12 @@ Panel {
         }
 
         PanelSeparator {
-          visible: root.showRoute
+          visible: root.lastUp
           foreground: root.foreground
         }
 
         Column {
-          visible: root.showRoute
+          visible: root.lastUp
           width: parent.width
           spacing: Style.space(10)
 

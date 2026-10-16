@@ -63,7 +63,7 @@ Settings are fields on the widget's entry in `~/.config/omarchy/shell.json`:
 
 - **Connected color** (`connectedColor`, default `#4CBB7F`, a softened Nym green) — smiley color while the tunnel is up.
 - **Notifications** (`notifications`, default on) — connect, disconnect and status unknown toasts.
-- **Fallback check** (`refreshIntervalSec`, default 30, 2 to 60) — the status follows the daemon log as soon as it changes; this periodic check also catches a stopped daemon.
+- **Fallback check** (`refreshIntervalSec`, default 5, 2 to 60) — the status follows the daemon log as soon as it changes; this periodic check also catches a stopped or crashed daemon, which writes nothing.
 
 Open and close the card from a keybinding or a script:
 

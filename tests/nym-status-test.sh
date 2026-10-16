@@ -54,13 +54,14 @@ rm -f "$TMP/logs/"*
 check "no log at all is unknown, no made-up since" "unknown|Cannot read the NymVPN log||" \
   "$(status | jq -r '[.status, .reason, .since, .sinceEpoch] | join("|")')"
 use_log no-state
-check "no state line is unknown" unknown "$(status | jq -r .status)"
+check "readable log without a state line is unknown, reason says so" "unknown|No tunnel state in the NymVPN log" \
+  "$(status | jq -r '.status + "|" + .reason')"
 echo "2026-10-13T19:25:32.000000Z  INFO nym_vpnd::tunnel_state_machine: New tunnel state: Hibernating" > "$TMP/logs/nym-vpnd.log"
 check "unlisted state is unknown, reason names it" "unknown|Hibernating|Unknown NymVPN state: Hibernating" \
   "$(status | jq -r '[.status, .state, .reason] | join("|")')"
 chmod 000 "$TMP/logs/nym-vpnd.log"
 if [[ -r $TMP/logs/nym-vpnd.log ]]; then skip "unreadable log is unknown (running as root)"
-else check "unreadable log is unknown" unknown "$(status | jq -r .status)"; fi
+else check "unreadable log is unknown, reason says so" "unknown|Cannot read the NymVPN log" "$(status | jq -r '.status + "|" + .reason')"; fi
 chmod 644 "$TMP/logs/nym-vpnd.log"
 
 use_log connected

@@ -7,8 +7,8 @@ import "Model.js" as Model
 // NymVPN status in the bar, drawn as Nym's smiley in the tunnel's color. Left click
 // opens the status card (Panel.qml); right click opens the NymVPN app. State comes
 // from scripts/nym-status, which reads the nym-vpnd log and sends the toasts. It runs
-// when the log changes, and on a slow timer for what the log does not show (daemon
-// stopped, missed rotation).
+// when the log changes, and on a timer for what the log does not show (daemon stopped
+// or crashed, missed rotation).
 BarWidget {
   id: root
   moduleName: "io.github.phil71x.nymvpn"
@@ -134,10 +134,11 @@ BarWidget {
     preload: false
     watchChanges: true
     printErrors: false
-    onFileChanged: debounce.restart()
+    onFileChanged: if (!debounce.running) debounce.start()
   }
 
-  // A state change writes several lines at once: read once they are in.
+  // A state change writes several lines at once: read once they are in. Not restarted by
+  // later writes, so a burst of lines cannot hold the read back.
   Timer {
     id: debounce
     interval: 300
@@ -145,7 +146,7 @@ BarWidget {
   }
 
   Timer {
-    interval: Math.max(2, Number(root.setting("refreshIntervalSec", 30))) * 1000
+    interval: Math.max(2, Number(root.setting("refreshIntervalSec", 5))) * 1000
     running: true
     repeat: true
     triggeredOnStart: true
