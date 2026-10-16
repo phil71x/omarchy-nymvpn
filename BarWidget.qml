@@ -6,13 +6,16 @@ import "Model.js" as Model
 
 // NymVPN status in the bar, drawn as Nym's smiley in the tunnel's color. Left click
 // opens the status card (Panel.qml); right click opens the NymVPN app. State comes
-// from scripts/nym-status, which reads the nym-vpnd log and sends the toasts.
+// from scripts/nym-status, which reads the nym-vpnd log and sends the toasts. It runs
+// when the log changes, and on a slow timer for what the log does not show (daemon
+// stopped, missed rotation).
 BarWidget {
   id: root
   moduleName: "io.github.phil71x.nymvpn"
 
   property var info: ({})
   property real now: Date.now()
+  property bool rerun: false   // a log change arrived while nym-status was running
 
   readonly property string status: info.status || ""
   readonly property color foreground: bar ? bar.barForeground : Color.foreground
@@ -53,6 +56,12 @@ BarWidget {
     panelLoader.item.bar = root.bar
     panelLoader.item.anchorItem = button
     panelLoader.item.hostWidget = root
+  }
+
+  // Reads the status now, or once more after the running read, which may predate the change.
+  function refresh() {
+    if (proc.running) rerun = true
+    else proc.running = true
   }
 
   function openApp() {
@@ -112,13 +121,34 @@ BarWidget {
         root.now = Date.now()
       }
     }
+    onExited: function() {
+      if (!root.rerun) return
+      root.rerun = false
+      root.refresh()
+    }
+  }
+
+  // Not loaded (the log grows to megabytes), only watched; rotation counts as a change.
+  FileView {
+    path: "/var/log/nym-vpnd/nym-vpnd.log"
+    preload: false
+    watchChanges: true
+    printErrors: false
+    onFileChanged: debounce.restart()
+  }
+
+  // A state change writes several lines at once: read once they are in.
+  Timer {
+    id: debounce
+    interval: 300
+    onTriggered: root.refresh()
   }
 
   Timer {
-    interval: Math.max(2, Number(root.setting("refreshIntervalSec", 5))) * 1000
+    interval: Math.max(2, Number(root.setting("refreshIntervalSec", 30))) * 1000
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: if (!proc.running) proc.running = true
+    onTriggered: root.refresh()
   }
 }

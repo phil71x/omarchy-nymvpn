@@ -21,7 +21,7 @@
     "defaults": {
       "connectedColor": "#4CBB7F",
       "notifications": true,
-      "refreshIntervalSec": 5
+      "refreshIntervalSec": 30
     },
     "schema": [
       {
@@ -41,11 +41,12 @@
       {
         "key": "refreshIntervalSec",
         "type": "integer",
-        "label": "Refresh interval (seconds)",
+        "label": "Fallback check (seconds)",
         "min": 2,
         "max": 60,
         "step": 1,
-        "defaultValue": 5
+        "defaultValue": 30,
+        "description": "Status follows the NymVPN log at once; this check also catches a stopped daemon"
       }
     ]
   }
