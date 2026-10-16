@@ -13,11 +13,7 @@ function parseStatus(text) {
 // stale with the new tooltip, so a log hiccup neither alarms nor blanks the card.
 function mergeStatus(prev, next) {
   if (next.status !== "unknown" || !prev || !prev.status || prev.status === "unknown") return next
-  var kept = {}
-  for (var key in prev) kept[key] = prev[key]
-  kept.stale = true
-  kept.tooltip = next.tooltip
-  return kept
+  return Object.assign({}, prev, { stale: true, tooltip: next.tooltip })
 }
 
 function statusLabel(status) {
@@ -100,8 +96,7 @@ function gatewayOptions(countries, point) {
 // Config showing a choice before nym-vpnc confirms it: "mode" (dvpn | mixnet), or "entry" /
 // "exit" (auto | random | CC). The card rolls back to the previous config if the action fails.
 function withChoice(config, kind, value) {
-  var next = {}
-  for (var key in config) next[key] = config[key]
+  var next = Object.assign({}, config)
   if (kind === "mode") next.mode = value
   else if (value === "auto" || value === "random") next[kind] = { kind: value, value: "", name: "" }
   else next[kind] = { kind: "country", value: value, name: "" }

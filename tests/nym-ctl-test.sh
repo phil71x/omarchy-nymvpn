@@ -15,11 +15,12 @@ check "not authorized: nym-vpnc never called" "" "$(vpnc_calls)"
 check "pkcheck runs without -u" "pkcheck -a com.nymvpn.vpnd.unix-access -p" "$(cut -d' ' -f1-4 "$CALLS")"
 FAKE_PKCHECK=0
 
-# nym-vpnc missing: a PATH holding only jq and the fake pkcheck.
+# nym-vpnc missing: a PATH holding only jq, timeout and the fake pkcheck.
 reset_calls
 mkdir -p "$TMP/minbin"
 ln -s "$(command -v jq)" "$TMP/minbin/jq"
 ln -s "$TMP/bin/pkcheck" "$TMP/minbin/pkcheck"
+ln -s "$(command -v timeout)" "$TMP/minbin/timeout"
 code=0; out=$(PATH="$TMP/minbin" "$BASH" "$ROOT/scripts/nym-ctl" config) || code=$?
 check "nym-vpnc missing: error" nym-vpnc-missing "$(jq -r .error <<<"$out")"
 check "nym-vpnc missing: exit code" 3 "$code"
@@ -114,12 +115,13 @@ code=0; ctl entry XYZ 2>/dev/null || code=$?
 check "invalid entry: usage exit code" 2 "$code"
 check "invalid entry: nym-vpnc not called" "" "$(vpnc_calls)"
 
-# A hung nym-vpnc is killed after NYMVPN_TIMEOUT seconds, so the card's controls come back.
+# A run still going after NYMVPN_TIMEOUT seconds is killed, nym-vpnc included, so the card's controls come back.
 reset_calls
 FAKE_HANG=1
 start=$SECONDS
 code=0; err=$(NYMVPN_TIMEOUT=1 ctl connect 2>&1 >/dev/null) || code=$?
 check "hung nym-vpnc: exit code" 124 "$code"
-check "hung nym-vpnc: message" "nym-vpnc did not answer within 1 s" "$err"
+check "hung nym-vpnc: message" "NymVPN did not answer within 1 s" "$err"
 check "hung nym-vpnc: killed before it ends" yes "$( (( SECONDS - start < 5 )) && echo yes)"
+check "hung nym-vpnc: no process left" "" "$(pgrep -f "$TMP/bin/nym-vpnc" || true)"
 FAKE_HANG=0

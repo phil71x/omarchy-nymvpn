@@ -6,8 +6,8 @@
 #   nym-ctl connect | disconnect
 #   nym-ctl mode dvpn|mixnet          reconnects if connected
 #   nym-ctl entry|exit auto|random|CC reconnects if connected
-# Each nym-vpnc call takes ~6 s, so callers run this asynchronously; a call still running
-# after NYMVPN_TIMEOUT seconds (30) is killed and fails with exit code 124.
+# Each nym-vpnc call takes ~6 s, so callers run this asynchronously; a run still going after
+# NYMVPN_TIMEOUT seconds (60) is killed and fails with exit code 124.
 # nym-vpnc is never called unless polkit already allows it: otherwise this prints
 # {"error": "not-authorized" | "nym-vpnc-missing", "message": …} and exits 3.
 
@@ -16,7 +16,7 @@ POLKIT_ACTION=com.nymvpn.vpnd.unix-access
 LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn"
 ISO=/usr/share/iso-codes/json/iso_3166-1.json
-TIMEOUT=${NYMVPN_TIMEOUT:-30}
+TIMEOUT=${NYMVPN_TIMEOUT:-60}
 
 fail() {
   jq -nc --arg error "$1" --arg message "$2" '{error: $error, message: $message}'
@@ -35,15 +35,7 @@ require_authorized() {
     fail not-authorized "polkit does not allow $POLKIT_ACTION without a password"
 }
 
-# nymvpnc <args>: nym-vpnc with a time limit, so a hung daemon cannot lock the card's controls.
-nymvpnc() {
-  local code=0
-  timeout "$TIMEOUT" nym-vpnc "$@" || code=$?
-  (( code == 124 )) && echo "nym-vpnc did not answer within $TIMEOUT s" >&2
-  return "$code"
-}
-
-vpnc() { nymvpnc --table-style blank "$@"; }
+vpnc() { nym-vpnc --table-style blank "$@"; }
 
 connected() {
   local log line=""
@@ -71,7 +63,7 @@ countries_for() {
   local type=$1 cache="$CACHE_DIR/$1.json"
   mkdir -p "$CACHE_DIR"
   if [[ ! -s $cache || -n $(find "$cache" -mmin +60) ]]; then
-    nymvpnc --table-style markdown gateway list "$type" |
+    nym-vpnc --table-style markdown gateway list "$type" |
       # Server names may contain "|", so anchor on the performance column "(load: …)".
       sed -nE 's/^\| ([1-9A-HJ-NP-Za-km-z]{32,}) +\| (.*\S) +\| [^|]*\[([A-Z]{2})\] +\| [^|]*\(load: ([A-Za-z]+)[^|]*\| [^|]*\| ([0-9a-f:]*) *\|.*/\1\t\3\t\2\t\4\t\5/p' |
       jq -R -s --slurpfile iso "$ISO" '
@@ -101,6 +93,15 @@ point() {
 reconnect_if_connected() {
   if connected; then vpnc reconnect >/dev/null; fi
 }
+
+# One deadline for the whole run, pkcheck and every nym-vpnc call included, so a hung daemon
+# cannot lock the card's controls: timeout kills the run's process group.
+if [[ -z ${NYMCTL_DEADLINE:-} ]]; then
+  code=0
+  NYMCTL_DEADLINE=1 timeout "$TIMEOUT" "$BASH" "$0" "$@" || code=$?
+  (( code == 124 )) && echo "NymVPN did not answer within $TIMEOUT s" >&2
+  exit "$code"
+fi
 
 case $1 in
   authorized | config | countries | connect | disconnect | mode | entry | exit) require_authorized ;;
