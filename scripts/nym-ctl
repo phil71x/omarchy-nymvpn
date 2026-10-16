@@ -17,6 +17,7 @@ LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn"
 ISO=/usr/share/iso-codes/json/iso_3166-1.json
 TIMEOUT=${NYMVPN_TIMEOUT:-60}
+[[ $TIMEOUT =~ ^[1-9][0-9]*$ ]] || TIMEOUT=60   # whole seconds: also used in bash arithmetic
 
 fail() {
   jq -nc --arg error "$1" --arg message "$2" '{error: $error, message: $message}'
@@ -100,10 +101,13 @@ reconnect_if_connected() {
 if [[ -z ${NYMCTL_DEADLINE:-} ]]; then
   code=0
   NYMCTL_DEADLINE=$$ timeout -k 5 "$TIMEOUT" "$BASH" "$0" "$@" &
-  wait "$!" || code=$?
+  run=$!
+  # Stopped from outside (shell restart, plugin disabled): the run in its own group stops too.
+  trap 'kill -KILL -- "-$run" 2>/dev/null; rm -f "$CACHE_DIR"/*.json."$$"; exit 143' TERM INT HUP
+  wait "$run" || code=$?
   # 137 is a timeout only once the deadline passed: nym-vpnc can also be killed by something else.
   if (( code == 124 || (code == 137 && SECONDS >= TIMEOUT) )); then
-    kill -KILL -- "-$!" 2>/dev/null   # timeout leads the run's process group
+    kill -KILL -- "-$run" 2>/dev/null   # timeout leads the run's process group
     echo "NymVPN did not answer within $TIMEOUT s" >&2
   fi
   rm -f "$CACHE_DIR"/*.json."$$"   # left by a gateway list that failed or was cut off

@@ -136,10 +136,23 @@ check "nym-vpnc ignoring SIGTERM: stopped before it ends" yes "$( (( SECONDS - s
 check "nym-vpnc ignoring SIGTERM: no process left" "" "$(pgrep -fx 'sleep 9.5' || true)"
 FAKE_HANG_TERM=
 
+# nym-ctl stopped from outside (shell restart) stops its run too.
+FAKE_HANG=connect
+bash "$ROOT/scripts/nym-ctl" connect >/dev/null 2>&1 &
+outer=$!
+sleep 1
+kill -TERM "$outer"
+wait "$outer" || true
+sleep 0.5
+check "stopped from outside: no process left" "" "$(pgrep -fx 'sleep 9.5' || true)"
+FAKE_HANG=
+
 # nym-vpnc killed by something else (out of memory) is not reported as a timeout.
 FAKE_KILLED=1
 code=0; err=$(NYMVPN_TIMEOUT=30 ctl connect 2>&1 >/dev/null) || code=$?
 check "nym-vpnc killed before the deadline: no timeout message" "137|" "$code|$(grep -o 'did not answer' <<<"$err" || true)"
+code=0; err=$(NYMVPN_TIMEOUT=1.5 ctl connect 2>&1 >/dev/null) || code=$?
+check "fractional timeout: default used, no arithmetic error" "137|" "$code|$(grep -oE 'syntax error|did not answer' <<<"$err" || true)"
 FAKE_KILLED=0
 
 # A gateway list stopped mid-fetch leaves no temporary cache file.
