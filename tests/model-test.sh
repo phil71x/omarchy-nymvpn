@@ -24,17 +24,27 @@ check "duration unknown start" "—" "$(model 'M.duration("", Date.now())')"
 check "duration in the future" "—" "$(model 'M.duration("1791885600", (1791885600 - 120) * 1000)')"
 
 
-check "status labels" "Connected|Connecting…|Offline · will reconnect|Disconnected|" \
-  "$(model '["up", "busy", "paused", "down", "other"].map(M.statusLabel).join("|")')"
+check "status labels" "Connected|Connecting…|Offline · will reconnect|Disconnected|Status unknown|" \
+  "$(model '["up", "busy", "paused", "down", "unknown", "other"].map(M.statusLabel).join("|")')"
 check "mode labels" "dVPN mode|Mixnet mode|" "$(model '["wg", "mix", ""].map(M.modeLabel).join("|")')"
 check "mode icons (Nerd Font code points)" "f140b|f140b|f0209|f0209|" \
   "$(model '["wg", "dvpn", "mix", "mixnet", ""].map(m => M.modeIcon(m) ? M.modeIcon(m).codePointAt(0).toString(16) : "").join("|")')"
-check "protection labels" "Protected|No network|Unprotected|Unprotected|Unprotected" \
-  "$(model '["up", "paused", "busy", "down", ""].map(M.protectionLabel).join("|")')"
+check "protection labels" "Protected|No network|Unknown|Unprotected|Unprotected|Unprotected" \
+  "$(model '["up", "paused", "unknown", "busy", "down", ""].map(M.protectionLabel).join("|")')"
 
 check "parse valid status" "down" "$(model 'M.parseStatus(JSON.stringify({status: "down"})).status')"
-check "parse garbage" "|NymVPN: unreadable status" "$(model '(s => s.status + "|" + s.tooltip)(M.parseStatus("not json"))')"
-check "parse JSON without status" "" "$(model 'M.parseStatus("{}").status')"
+check "parse garbage" "unknown|NymVPN: unreadable status" "$(model '(s => s.status + "|" + s.tooltip)(M.parseStatus("not json"))')"
+check "parse JSON without status" "unknown" "$(model 'M.parseStatus("{}").status')"
+
+# An unknown reading keeps the last good status, marked stale, with the new tooltip.
+check "unknown after up keeps up" "up|BE|true|cannot read" \
+  "$(model '(s => [s.status, s.entryCc, s.stale, s.tooltip].join("|"))(M.mergeStatus({status: "up", entryCc: "BE", tooltip: "old"}, {status: "unknown", tooltip: "cannot read"}))')"
+check "unknown with nothing before stays unknown" "unknown|" \
+  "$(model '(s => s.status + "|" + (s.stale || ""))(M.mergeStatus({}, {status: "unknown"}))')"
+check "a known reading replaces a stale one" "down|" \
+  "$(model '(s => s.status + "|" + (s.stale || ""))(M.mergeStatus({status: "up", stale: true}, {status: "down"}))')"
+check "merge leaves the previous status untouched" "" \
+  "$(model '(p => (M.mergeStatus(p, {status: "unknown"}), p.stale || ""))({status: "up"})')"
 
 # Gateway dropdowns (entry and exit) from `nym-ctl config`.
 check "gateway value per kind" "CH|server|random|auto|auto" \

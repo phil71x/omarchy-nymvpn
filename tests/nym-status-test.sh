@@ -9,6 +9,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 # plugin replaces; "Offline" without auto-connect is down by decision (October 2026):
 #   Connected → up · Connecting, Disconnecting → busy · Offline, auto-connect → paused
 #   Disconnected, Offline, Error → down · nym-vpnd inactive → down
+#   no state line or an unlisted state → unknown (v1.0.1: was down, a false critical toast)
 for case in connected:up connected-mixnet:up connecting:busy disconnecting:busy offline-auto:paused \
             offline:down disconnected:down error:down; do
   use_log "${case%%:*}"
@@ -50,7 +51,15 @@ use_log no-state connected
 check "falls back to the rotated log" up "$(status | jq -r .status)"
 
 rm -f "$TMP/logs/"*
-check "no log at all is down" down "$(status | jq -r .status)"
+check "no log at all is unknown" unknown "$(status | jq -r .status)"
+use_log no-state
+check "no state line is unknown" unknown "$(status | jq -r .status)"
+echo "2026-10-13T19:25:32.000000Z  INFO nym_vpnd::tunnel_state_machine: New tunnel state: Hibernating" > "$TMP/logs/nym-vpnd.log"
+check "unlisted state is unknown" "unknown|Hibernating" "$(status | jq -r '.status + "|" + .state')"
+chmod 000 "$TMP/logs/nym-vpnd.log"
+if [[ -r $TMP/logs/nym-vpnd.log ]]; then skip "unreadable log is unknown (running as root)"
+else check "unreadable log is unknown" unknown "$(status | jq -r .status)"; fi
+chmod 644 "$TMP/logs/nym-vpnd.log"
 
 use_log connected
 FAKE_DAEMON=inactive
@@ -70,6 +79,17 @@ use_log disconnected; status >/dev/null
 check "no repeated toast" 1 "$(wc -l < "$CALLS")"
 use_log connected; status >/dev/null
 check "toast on reconnect" "notify-send NymVPN connected" "$(tail -1 "$CALLS" | cut -d' ' -f1-3)"
+
+# Unknown never toasts and keeps the recorded status: back to the same state, no toast either.
+reset_calls
+use_log connected; status >/dev/null
+rm -f "$TMP/logs/"*; status >/dev/null
+check "no toast when the log disappears" "" "$(calls)"
+use_log connected; status >/dev/null
+check "no toast when the log comes back unchanged" "" "$(calls)"
+rm -f "$TMP/logs/"*; status >/dev/null
+use_log disconnected; status >/dev/null
+check "toast on a real change across an unknown spell" "notify-send -u critical NymVPN disconnected" "$(cut -d' ' -f1-5 "$CALLS")"
 
 # --no-notify (setting "notifications" off) still records the status.
 reset_calls

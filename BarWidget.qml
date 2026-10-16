@@ -108,7 +108,7 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.info = Model.parseStatus(text)
+        root.info = Model.mergeStatus(root.info, Model.parseStatus(text))
         root.now = Date.now()
       }
     }

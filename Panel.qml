@@ -186,6 +186,16 @@ Panel {
           }
         }
 
+        InfoText {
+          visible: root.status === "unknown" || root.info.stale === true
+          width: parent.width
+          text: root.status === "unknown"
+            ? "Cannot read the NymVPN log: tunnel state unknown."
+            : "Cannot read the NymVPN log: showing the last known state."
+          wrapMode: Text.Wrap
+          opacity: 0.6
+        }
+
         PanelSeparator {
           visible: root.connected
           foreground: root.foreground

@@ -6,7 +6,18 @@ function parseStatus(text) {
     var info = JSON.parse(text)
     if (info && typeof info.status === "string") return info
   } catch (e) {}
-  return { status: "", tooltip: "NymVPN: unreadable status" }
+  return { status: "unknown", tooltip: "NymVPN: unreadable status" }
+}
+
+// Status to show after a new reading: an unknown reading keeps the last good one, marked
+// stale with the new tooltip, so a log hiccup neither alarms nor blanks the card.
+function mergeStatus(prev, next) {
+  if (next.status !== "unknown" || !prev || !prev.status || prev.status === "unknown") return next
+  var kept = {}
+  for (var key in prev) kept[key] = prev[key]
+  kept.stale = true
+  kept.tooltip = next.tooltip
+  return kept
 }
 
 function statusLabel(status) {
@@ -14,7 +25,8 @@ function statusLabel(status) {
     up: "Connected",
     busy: "Connecting…",
     paused: "Offline · will reconnect",
-    down: "Disconnected"
+    down: "Disconnected",
+    unknown: "Status unknown"
   })[status] || ""
 }
 
@@ -33,6 +45,7 @@ function modeIcon(mode) {
 function protectionLabel(status) {
   if (status === "up") return "Protected"
   if (status === "paused") return "No network"
+  if (status === "unknown") return "Unknown"
   return "Unprotected"
 }
 
@@ -85,5 +98,5 @@ function gatewayOptions(countries, point) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { controlsState, parseStatus, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
+  module.exports = { controlsState, parseStatus, mergeStatus, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
 }
