@@ -37,6 +37,7 @@ Panel {
   property bool reloadPending: false  // a config read started before the last action: read again
   property bool acting: false
   property string actionError: ""
+  property string configError: ""   // the last config read failed; cleared by the next good one
   readonly property bool controlsOn: controls === "authorized"
   readonly property string ctl: hostWidget ? hostWidget.scriptDir + "/nym-ctl" : ""
 
@@ -324,9 +325,9 @@ Panel {
           }
 
           InfoText {
-            visible: root.actionError !== ""
+            visible: text !== ""
             width: parent.width
-            text: root.actionError
+            text: root.actionError || root.configError
             color: Color.urgent
             wrapMode: Text.Wrap
           }
@@ -395,13 +396,17 @@ Panel {
         if (root.acting || root.reloadPending) return
         try {
           var config = JSON.parse(text)
-          if (config.mode) root.config = config
+          if (config.mode) {
+            root.config = config
+            root.configError = ""
+          }
           else if (config.error === "not-authorized") root.controls = "not-authorized"
         } catch (e) {}
       }
     }
+    stderr: StdioCollector { id: configErr; waitForEnd: true }
     onExited: function(exitCode) {
-      if (exitCode === 124) root.actionError = "NymVPN did not answer in time. Try again, or open the app."
+      if (exitCode !== 0 && configErr.text.trim() !== "") root.configError = configErr.text.trim().split("\n")[0]
       if (!root.reloadPending) return
       root.reloadPending = false
       root.loadConfig()

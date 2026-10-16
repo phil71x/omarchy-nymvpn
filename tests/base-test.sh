@@ -35,7 +35,7 @@ check() {
 mkdir -p "$TMP/bin" "$TMP/logs"
 export PATH="$TMP/bin:$PATH" XDG_RUNTIME_DIR="$TMP/run" XDG_CACHE_HOME="$TMP/cache"
 export NYMVPN_LOG_DIR="$TMP/logs" CALLS="$TMP/calls" FIX
-export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0 FAKE_HANG=0
+export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0 FAKE_HANG= FAKE_HANG_TERM=
 export CACHE_DIR="$XDG_CACHE_HOME/io.github.phil71x.nymvpn"
 
 cat > "$TMP/bin/systemctl" <<'EOF'
@@ -54,7 +54,11 @@ EOF
 cat > "$TMP/bin/nym-vpnc" <<'EOF'
 #!/usr/bin/env bash
 echo "nym-vpnc $*" >> "$CALLS"
-(( FAKE_HANG )) && sleep 10
+# FAKE_HANG: hang on calls whose arguments contain it; FAKE_HANG_TERM=ignore also ignores SIGTERM.
+if [[ -n $FAKE_HANG && "$*" == *"$FAKE_HANG"* ]]; then
+  [[ $FAKE_HANG_TERM == ignore ]] && trap '' TERM
+  sleep 9.5
+fi
 case "$*" in
   *"tunnel get")     cat "$FIX/nym-vpnc/tunnel-get-$FAKE_MODE.txt" ;;
   *"gateway get")    cat "$FIX/nym-vpnc/gateway-get.txt" ;;

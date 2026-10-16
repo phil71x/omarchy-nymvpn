@@ -115,13 +115,29 @@ code=0; ctl entry XYZ 2>/dev/null || code=$?
 check "invalid entry: usage exit code" 2 "$code"
 check "invalid entry: nym-vpnc not called" "" "$(vpnc_calls)"
 
-# A run still going after NYMVPN_TIMEOUT seconds is killed, nym-vpnc included, so the card's controls come back.
+# A run still going after NYMVPN_TIMEOUT seconds is stopped, nym-vpnc and its children included,
+# so the card's controls come back.
 reset_calls
-FAKE_HANG=1
+FAKE_HANG=connect
 start=$SECONDS
 code=0; err=$(NYMVPN_TIMEOUT=1 ctl connect 2>&1 >/dev/null) || code=$?
 check "hung nym-vpnc: exit code" 124 "$code"
 check "hung nym-vpnc: message" "NymVPN did not answer within 1 s" "$err"
-check "hung nym-vpnc: killed before it ends" yes "$( (( SECONDS - start < 5 )) && echo yes)"
-check "hung nym-vpnc: no process left" "" "$(pgrep -f "$TMP/bin/nym-vpnc" || true)"
-FAKE_HANG=0
+check "hung nym-vpnc: stopped before it ends" yes "$( (( SECONDS - start < 5 )) && echo yes)"
+check "hung nym-vpnc: no process left" "" "$(pgrep -fx 'sleep 9.5' || true)"
+
+# One that ignores SIGTERM is killed as soon as the run is stopped.
+FAKE_HANG_TERM=ignore
+start=$SECONDS
+code=0; err=$(NYMVPN_TIMEOUT=1 ctl connect 2>&1 >/dev/null) || code=$?
+check "nym-vpnc ignoring SIGTERM: run stopped" "124|NymVPN did not answer within 1 s" "$code|$err"
+check "nym-vpnc ignoring SIGTERM: stopped before it ends" yes "$( (( SECONDS - start < 5 )) && echo yes)"
+check "nym-vpnc ignoring SIGTERM: no process left" "" "$(pgrep -fx 'sleep 9.5' || true)"
+FAKE_HANG_TERM=
+
+# A gateway list stopped mid-fetch leaves no temporary cache file.
+rm -rf "$CACHE_DIR"
+FAKE_HANG="gateway list"
+NYMVPN_TIMEOUT=1 ctl countries >/dev/null 2>&1 || true
+check "stopped fetch: no temporary cache file" "" "$(ls -A "$CACHE_DIR" 2>/dev/null)"
+FAKE_HANG=

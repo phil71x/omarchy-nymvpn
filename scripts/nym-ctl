@@ -7,7 +7,7 @@
 #   nym-ctl mode dvpn|mixnet          reconnects if connected
 #   nym-ctl entry|exit auto|random|CC reconnects if connected
 # Each nym-vpnc call takes ~6 s, so callers run this asynchronously; a run still going after
-# NYMVPN_TIMEOUT seconds (60) is killed and fails with exit code 124.
+# NYMVPN_TIMEOUT seconds (60) is stopped and fails with exit code 124 (137 if it had to be killed).
 # nym-vpnc is never called unless polkit already allows it: otherwise this prints
 # {"error": "not-authorized" | "nym-vpnc-missing", "message": …} and exits 3.
 
@@ -59,6 +59,7 @@ list_type() {
 # {servers: {id: name}, loads: {id: Low|Medium|High}, ipv6: {id: exit IPv6, when it has one},
 #  countries: [{code, name, count}]},
 # cached per list type for an hour, since server load changes; nym-status reads the loads.
+# Written through a temporary file named after the deadline run, which removes it if cut off.
 countries_for() {
   local type=$1 cache="$CACHE_DIR/$1.json"
   mkdir -p "$CACHE_DIR"
@@ -73,8 +74,8 @@ countries_for() {
            loads: map({key: .id, value: .load}) | from_entries,
            ipv6: map(select(.ipv6 != "") | {key: .id, value: .ipv6}) | from_entries,
            countries: (group_by(.code) | map({code: .[0].code, name: ($names[.[0].code] // (if .[0].code == "XK" then "Kosovo" else .[0].code end)), count: length})
-                       | sort_by(.name))}' > "$cache.$$" && mv "$cache.$$" "$cache"
-    rm -f "$cache.$$"
+                       | sort_by(.name))}' > "$cache.$NYMCTL_DEADLINE" && mv "$cache.$NYMCTL_DEADLINE" "$cache"
+    rm -f "$cache.$NYMCTL_DEADLINE"
   fi
   cat "$cache"
 }
@@ -95,11 +96,17 @@ reconnect_if_connected() {
 }
 
 # One deadline for the whole run, pkcheck and every nym-vpnc call included, so a hung daemon
-# cannot lock the card's controls: timeout kills the run's process group.
+# cannot lock the card's controls: timeout terminates the run's process group (-k: kills the
+# run if it ignores that), then whatever survives in the group, such as a nym-vpnc ignoring SIGTERM.
 if [[ -z ${NYMCTL_DEADLINE:-} ]]; then
   code=0
-  NYMCTL_DEADLINE=1 timeout "$TIMEOUT" "$BASH" "$0" "$@" || code=$?
-  (( code == 124 )) && echo "NymVPN did not answer within $TIMEOUT s" >&2
+  NYMCTL_DEADLINE=$$ timeout -k 5 "$TIMEOUT" "$BASH" "$0" "$@" &
+  wait "$!" || code=$?
+  if (( code == 124 || code == 137 )); then
+    kill -KILL -- "-$!" 2>/dev/null   # timeout leads the run's process group
+    echo "NymVPN did not answer within $TIMEOUT s" >&2
+  fi
+  rm -f "$CACHE_DIR"/*.json."$$"   # a gateway list cut off mid-write
   exit "$code"
 fi
 
