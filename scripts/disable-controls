@@ -32,8 +32,7 @@ if ! gum confirm "Disable controls?"; then
 fi
 
 sudo rm -f "$RULE_DST"
-# Without the marker (controls enabled by version 1.0.1 or earlier, or you were already a member),
-# ask, defaulting to keeping the membership.
+# No marker: enabled by 1.0.1 or earlier, or already a member before.
 if in_group; then
   if [[ -e $MARKER ]] ||
      gum confirm --default=false "Enable controls may not have added you to $GROUP. Remove you from it?"; then
