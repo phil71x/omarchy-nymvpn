@@ -86,6 +86,7 @@ FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=1
 code=0; out=$(ctl config 2>/dev/null) || code=$?
 check "an empty gateway list fails and is not cached" "1||no cache" "$code|$out|$([[ -e $CACHE_DIR/wg.json ]] || echo no cache)"
 FAKE_LIST_EMPTY=0
+check "failed and empty fetches leave no file behind" "" "$(ls -A "$CACHE_DIR")"
 
 # A list too long for a command-line argument (128 KiB) is read from the cache file.
 mkdir -p "$CACHE_DIR"
@@ -97,8 +98,6 @@ check "config with a long gateway list" "0|CH" "$code|$(jq -r '.countries.entry[
 code=0; out=$(ctl countries 2>&1) || code=$?
 check "countries with a long gateway list" "0|CH" "$code|$(jq -r '.entry[0].code' <<<"$out" 2>/dev/null)"
 rm -rf "$CACHE_DIR"
-check "failed fetch leaves no file behind" "" "$(ls -A "$CACHE_DIR")"
-FAKE_LIST_FAIL=0
 
 # Mixnet mode lists entry and exit gateways separately.
 reset_calls
