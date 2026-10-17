@@ -9,6 +9,11 @@ ID=io.github.phil71x.nymvpn
 RULE_DST="/etc/polkit-1/rules.d/50-$ID.rules"
 GROUP=nym-vpn
 ACTION=com.nymvpn.vpnd.unix-access
+# Set by enable-controls when it added the user to GROUP.
+MARKER="${XDG_STATE_HOME:-$HOME/.local/state}/$ID/added-to-group"
+
+# From the group database, so it is current without a new login; no pipe, so no pipefail race.
+in_group() { [[ " $(id -nG "$USER") " == *" $GROUP "* ]]; }
 
 cat <<EOF
 Disable NymVPN controls
@@ -17,7 +22,7 @@ The status card goes back to read-only, and the NymVPN daemon asks for your
 password again. Two changes, made with sudo:
 
   1. Remove the polkit rule $RULE_DST.
-  2. Remove you ($USER) from the group $GROUP.
+  2. Remove you ($USER) from the group $GROUP, if Enable controls added you.
 
 EOF
 
@@ -27,9 +32,17 @@ if ! gum confirm "Disable controls?"; then
 fi
 
 sudo rm -f "$RULE_DST"
-if id -nG "$USER" | tr ' ' '\n' | grep -qx "$GROUP"; then
-  sudo gpasswd -d "$USER" "$GROUP"
+# Without the marker (controls enabled by version 1.0.1 or earlier, or you were already a member),
+# ask, defaulting to keeping the membership.
+if in_group; then
+  if [[ -e $MARKER ]] ||
+     gum confirm --default=false "Enable controls may not have added you to $GROUP. Remove you from it?"; then
+    sudo gpasswd -d "$USER" "$GROUP"
+  else
+    echo "Kept you in $GROUP."
+  fi
 fi
+rm -f "$MARKER"
 
 sleep 1
 if pkcheck -a "$ACTION" -p $$ >/dev/null 2>&1; then

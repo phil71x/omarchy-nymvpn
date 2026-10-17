@@ -79,6 +79,9 @@ check "failed fetch keeps the stale cache intact" same "$(cmp -s "$TMP/wg.json.b
 rm -rf "$CACHE_DIR"
 code=0; ctl countries >/dev/null 2>&1 || code=$?
 check "failed fetch without cache fails" 1 "$code"
+code=0; out=$(ctl config 2>"$TMP/err") || code=$?
+check "config fails without any gateway list, rather than offering no countries" "1||Could not get the NymVPN wg gateway list" \
+  "$code|$out|$(cat "$TMP/err")"
 check "failed fetch leaves no file behind" "" "$(ls -A "$CACHE_DIR")"
 FAKE_LIST_FAIL=0
 

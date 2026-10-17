@@ -35,8 +35,18 @@ fi
 # Route details for the status card (only meaningful while connected).
 mode="" entry_ip="" exit_ip="" entry_cc="" exit_cc="" entry_uptime="" exit_uptime="" entry_load="" exit_load="" entry_ipv6="" exit_ipv6="" entry_name="" exit_name=""
 # dVPN: "Connected wg to <ip>:<port> [<id>] → <ip>:<port> [<id>]"; Mixnet: "Connected mix to <ip> [<id>] → <ip> [<id>]".
-if [[ $state =~ ^Connected\ ([a-z]+)\ to\ ([0-9.]+)[:\ ].*→\ ([0-9.]+)[:\ ] ]]; then
-  mode=${BASH_REMATCH[1]} entry_ip=${BASH_REMATCH[2]} exit_ip=${BASH_REMATCH[3]}
+# An IPv6 address is bare in Mixnet and bracketed with its port in dVPN ("[2001:db8::1]:51822").
+# host <address>: the address without brackets or port, empty if it is not an IP address.
+host() {
+  local a=$1
+  if [[ $a == \[* ]]; then a=${a#\[} a=${a%%]*}   # [IPv6]:port
+  elif [[ $a == *.*:* && $a != *:*:* ]]; then a=${a%:*}   # IPv4:port, not an IPv4-mapped IPv6
+  fi
+  [[ $a =~ ^[0-9a-fA-F:.]+$ ]] && printf '%s' "$a"
+}
+if [[ $state =~ ^Connected\ ([a-z]+)\ to\ ([^ ]+)\ .*→\ ([^ ]+) ]]; then
+  mode=${BASH_REMATCH[1]}
+  entry_ip=$(host "${BASH_REMATCH[2]}") exit_ip=$(host "${BASH_REMATCH[3]}")
   # The log calls a gateway's uptime its "performance".
   while read -r role cc uptime; do
     [[ $role == entry ]] && entry_cc=$cc entry_uptime=$uptime
@@ -73,6 +83,13 @@ fi
 reason=""
 if ! systemctl is-active --quiet nym-vpnd; then
   status=down; state="nym-vpnd stopped"
+  # Since the daemon stopped, not since the last tunnel state it logged; unknown if it never ran.
+  stopped=$(systemctl show -P InactiveEnterTimestamp --timestamp=unix nym-vpnd 2>/dev/null)
+  since="" since_epoch=""
+  if [[ $stopped =~ ^@([1-9][0-9]*)$ ]]; then
+    since_epoch=${BASH_REMATCH[1]}
+    since=$(date -d "@$since_epoch" +%H:%M)
+  fi
 else
   case $state in
     Connected*)                         status=up ;;
@@ -114,12 +131,13 @@ if [[ $status != busy ]]; then
   fi
 fi
 
-route=$(sed -E 's/ \[[^]]*\]//g; s/^Connected [a-z]+ to //' <<<"$state")
+# Drops the gateway ids, not the brackets of an IPv6 address.
+route=$(sed -E 's/ \[[1-9A-HJ-NP-Za-km-z]{32,}\]//g; s/^Connected [a-z]+ to //' <<<"$state")
 case $status in
   up)     tooltip="NymVPN: connected since $since"$'\n'"$route" ;;
   busy)   tooltip="NymVPN: ${state%%,*}…" ;;
   paused) tooltip="NymVPN: offline, will reconnect automatically" ;;
-  down)   tooltip="NymVPN: DISCONNECTED since $since, not protected" ;;
+  down)   tooltip="NymVPN: DISCONNECTED${since:+ since $since}, not protected" ;;
   unknown) tooltip="NymVPN: $reason" ;;
 esac
 

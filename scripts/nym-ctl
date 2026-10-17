@@ -77,6 +77,8 @@ countries_for() {
            countries: (group_by(.code) | map({code: .[0].code, name: ($names[.[0].code] // (if .[0].code == "XK" then "Kosovo" else .[0].code end)), count: length})
                        | sort_by(.name))}' > "$cache.$NYMCTL_DEADLINE" && mv "$cache.$NYMCTL_DEADLINE" "$cache"
   fi
+  # A failed fetch keeps a stale cache; with none at all, fail rather than show no countries.
+  [[ -s $cache ]] || { echo "Could not get the NymVPN $type gateway list" >&2; return 1; }
   cat "$cache"
 }
 
@@ -127,14 +129,13 @@ case $1 in
     entry=$(point "$(grep '^Entry point:' <<<"$gw")")
     exit_=$(point "$(grep '^Exit point:' <<<"$gw")")
     # Name specific servers from the cached gateway list.
-    type_entry=$(list_type "$hop" entry) type_exit=$(list_type "$hop" exit)
-    countries_for "$type_entry" >/dev/null   # fill the cache once before reading it twice
-    jq -nc --arg hop "$hop" --argjson entry "$entry" --argjson exit "$exit_" \
-      --slurpfile le <(countries_for "$type_entry") --slurpfile lx <(countries_for "$type_exit") '
+    le=$(countries_for "$(list_type "$hop" entry)") || exit 1
+    lx=$(countries_for "$(list_type "$hop" exit)") || exit 1
+    jq -nc --arg hop "$hop" --argjson entry "$entry" --argjson exit "$exit_" --argjson le "$le" --argjson lx "$lx" '
       {mode: (if $hop == "on" then "dvpn" else "mixnet" end),
-       entry: ($entry + {name: ($le[0].servers[$entry.value] // "")}),
-       exit: ($exit + {name: ($lx[0].servers[$exit.value] // "")}),
-       countries: {entry: $le[0].countries, exit: $lx[0].countries}}'
+       entry: ($entry + {name: ($le.servers[$entry.value] // "")}),
+       exit: ($exit + {name: ($lx.servers[$exit.value] // "")}),
+       countries: {entry: $le.countries, exit: $lx.countries}}'
     ;;
   countries)
     hop=$(two_hop)

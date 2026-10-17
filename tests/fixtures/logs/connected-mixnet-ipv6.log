@@ -1,0 +1,3 @@
+2026-10-15T19:58:01.254667Z  INFO nym_vpn_lib::tunnel_state_machine::states::connecting_state: Using entry gateway: MixEntryCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC, location: FR, performance: 99%
+2026-10-15T19:58:01.254671Z  INFO nym_vpn_lib::tunnel_state_machine::states::connecting_state: Using exit gateway: MixExitDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD, location: BE, performance: 77%
+2026-10-15T19:58:02.694164Z  INFO nym_vpn_lib::tunnel_state_machine: New tunnel state: Connected mix to 2001:db8::30 [MixEntryCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC] → 2001:db8::40 [MixExitDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD]

@@ -263,7 +263,7 @@ Panel {
           }
 
           InfoText {
-            visible: !root.config || !root.config.countries
+            visible: (!root.config || !root.config.countries) && !root.configError
             text: "Loading the gateway lists…"
             opacity: 0.6
           }

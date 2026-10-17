@@ -1,6 +1,6 @@
 # NymVPN for Omarchy
 
-*Created: October 14, 2026 -- Updated: October 16, 2026*
+*Created: October 14, 2026 -- Updated: October 17, 2026*
 
 Unofficial [NymVPN](https://nym.com) status for the [Omarchy](https://omarchy.org) bar: no password prompts, no changes to your system or daemon settings, and an alert when the tunnel drops.
 
@@ -37,11 +37,11 @@ The smiley lands in the right section of the bar. To place it elsewhere, for exa
 
 Update with `omarchy plugin update io.github.phil71x.nymvpn`.
 
-To remove the plugin, first click **Disable controls** in the card if you enabled them, so the polkit rule and the group membership go away. Then run:
+To remove the plugin, first click **Disable controls** in the card if you enabled them, so the polkit rule and the group membership it added go away. Then run:
 
 ```bash
 omarchy plugin remove io.github.phil71x.nymvpn
-rm -rf ~/.cache/io.github.phil71x.nymvpn
+rm -rf ~/.cache/io.github.phil71x.nymvpn ~/.local/state/io.github.phil71x.nymvpn
 ```
 
 ## Enabling the NymVPN controls
@@ -50,10 +50,10 @@ Without setup, the card is read-only: NymVPN's polkit policy asks for your passw
 
 **Enable controls** opens Omarchy's floating terminal, explains each change and asks for confirmation before running `sudo`:
 
-1. Adds you to the group `nym-vpn`, created by the `nym-vpnd-bin` package.
+1. Adds you to the group `nym-vpn`, created by the `nym-vpnd-bin` package, unless you are already a member.
 2. Installs [`polkit/50-io.github.phil71x.nymvpn.rules`](polkit/50-io.github.phil71x.nymvpn.rules) to `/etc/polkit-1/rules.d/`. The rule lets members of `nym-vpn`, in a local and active session, use the NymVPN daemon (`com.nymvpn.vpnd.unix-access`) without a password.
 
-Any program running as you can then control NymVPN without a password. **Disable controls** in the card undoes both changes the same way.
+Any program running as you can then control NymVPN without a password. **Disable controls** in the card undoes both changes the same way. It removes you from `nym-vpn` only if **Enable controls** added you; when it cannot tell (controls enabled with version 1.0.1 or earlier), it asks and keeps the membership by default.
 
 Each control action takes a few seconds, the time `nym-vpnc` takes to answer. A change of mode or gateway while connected reconnects the tunnel.
 
@@ -77,7 +77,7 @@ omarchy-shell shell hide io.github.phil71x.nymvpn
 - **Read only by default** — the plugin reads the daemon log and, with controls enabled, calls `nym-vpnc`. It makes no network requests of its own and sends no telemetry.
 - **No password prompts** — before any `nym-vpnc` call, `pkcheck` checks that polkit allows it without a password; otherwise the call is not made.
 - **No hidden system changes** — the only system changes are the two made by **Enable controls**, in a visible terminal, after confirmation, and reverted by **Disable controls**. The plugin never changes NymVPN settings, never adds VPN bypasses, and never runs `sudo` from the bar.
-- **Files written** — the last state in `$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/` (cleared at reboot) and gateway lists in `~/.cache/io.github.phil71x.nymvpn/`.
+- **Files written** — the last state in `$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/` (cleared at reboot), gateway lists in `~/.cache/io.github.phil71x.nymvpn/`, and, with controls enabled, a note in `~/.local/state/io.github.phil71x.nymvpn/` that **Enable controls** added you to `nym-vpn`.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
