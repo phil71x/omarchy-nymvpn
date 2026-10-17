@@ -51,7 +51,9 @@ Panel {
 
   // nym-vpnc takes ~6 s per call: config loads in the background, the last one stays shown.
   function loadConfig() {
-    if (!configProc.running) configProc.running = true
+    if (configProc.running) return
+    configError = ""   // a new read: show "Loading…" rather than the last read's error
+    configProc.running = true
   }
 
   // Shows `choice` (a config from Model.withChoice) at once; actionProc rolls it back on failure
