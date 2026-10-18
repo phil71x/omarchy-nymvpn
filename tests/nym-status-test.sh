@@ -44,6 +44,17 @@ check "Mixnet route (mode mix, no ports)" "up mix 192.0.2.30 198.51.100.40 FR 99
   "$(jq -r '[.status, .mode, .entryIp, .exitIp, .entryCc, .entryUptime, .exitCc, .exitUptime] | join(" ")' <<<"$out")"
 check "Mixnet tooltip route" "192.0.2.30 → 198.51.100.40" "$(jq -r '.tooltip | split("\n")[1]' <<<"$out")"
 
+# IPv6 gateways: bracketed with the port in dVPN, bare in Mixnet.
+use_log connected-ipv6
+out=$(status)
+check "dVPN IPv6 route" "up wg 2001:db8::10 2001:db8::20" "$(jq -r '[.status, .mode, .entryIp, .exitIp] | join(" ")' <<<"$out")"
+check "dVPN IPv6 tooltip keeps the address brackets" "[2001:db8::10]:51822 → [2001:db8::20]:51822" \
+  "$(jq -r '.tooltip | split("\n")[1]' <<<"$out")"
+use_log connected-mixnet-ipv6
+out=$(status)
+check "Mixnet IPv6 route" "up mix 2001:db8::30 2001:db8::40" "$(jq -r '[.status, .mode, .entryIp, .exitIp] | join(" ")' <<<"$out")"
+check "Mixnet IPv6 tooltip" "2001:db8::30 → 2001:db8::40" "$(jq -r '.tooltip | split("\n")[1]' <<<"$out")"
+
 use_log disconnected
 check "no route when down" "" "$(status | jq -r '.mode + .entryIp + .entryCc')"
 
@@ -67,7 +78,12 @@ chmod 644 "$TMP/logs/nym-vpnd.log"
 use_log connected
 FAKE_DAEMON=inactive
 check "daemon stopped is down" "down|nym-vpnd stopped" "$(status | jq -r '.status + "|" + .state')"
-FAKE_DAEMON=active
+check "daemon stopped, stop time unknown: no since from the old tunnel state" "||NymVPN: DISCONNECTED, not protected" \
+  "$(status | jq -r '[.since, .sinceEpoch, .tooltip] | join("|")')"
+FAKE_STOPPED_AT=@1760426700
+check "daemon stopped: since when it stopped" "$(date -d @1760426700 +%H:%M)|1760426700" \
+  "$(status | jq -r '.since + "|" + .sinceEpoch')"
+FAKE_DAEMON=active FAKE_STOPPED_AT=''
 
 # Toasts: only on a change between stable statuses, never on the first run.
 reset_calls

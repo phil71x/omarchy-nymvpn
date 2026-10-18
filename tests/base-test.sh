@@ -33,13 +33,15 @@ check() {
 }
 
 mkdir -p "$TMP/bin" "$TMP/logs"
-export PATH="$TMP/bin:$PATH" XDG_RUNTIME_DIR="$TMP/run" XDG_CACHE_HOME="$TMP/cache"
+export PATH="$TMP/bin:$PATH" XDG_RUNTIME_DIR="$TMP/run" XDG_CACHE_HOME="$TMP/cache" XDG_STATE_HOME="$TMP/state"
 export NYMVPN_LOG_DIR="$TMP/logs" CALLS="$TMP/calls" FIX
-export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0 FAKE_HANG= FAKE_HANG_TERM= FAKE_KILLED=0
+export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=0 FAKE_HANG='' FAKE_HANG_TERM='' FAKE_KILLED=0 FAKE_STOPPED_AT=''
 export CACHE_DIR="$XDG_CACHE_HOME/io.github.phil71x.nymvpn"
 
 cat > "$TMP/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
+# show: the stop time as "@<epoch>" (FAKE_STOPPED_AT); is-active: FAKE_DAEMON.
+[[ "$*" == "show -P InactiveEnterTimestamp --timestamp=unix nym-vpnd" ]] && { echo "$FAKE_STOPPED_AT"; exit 0; }
 [[ $FAKE_DAEMON == active ]]
 EOF
 cat > "$TMP/bin/notify-send" <<'EOF'
@@ -64,7 +66,10 @@ fi
 case "$*" in
   *"tunnel get")     cat "$FIX/nym-vpnc/tunnel-get-$FAKE_MODE.txt" ;;
   *"gateway get")    cat "$FIX/nym-vpnc/gateway-get.txt" ;;
-  *"gateway list "*) (( FAKE_LIST_FAIL )) && exit 1; cat "$FIX/nym-vpnc/gateway-list-${!#}.md" ;;
+  # FAKE_LIST_EMPTY=1: the table header alone, as an empty list or a changed format would give.
+  *"gateway list "*) (( FAKE_LIST_FAIL )) && exit 1
+                     if (( FAKE_LIST_EMPTY )); then head -n2 "$FIX/nym-vpnc/gateway-list-${!#}.md"
+                     else cat "$FIX/nym-vpnc/gateway-list-${!#}.md"; fi ;;
 esac
 EOF
 chmod +x "$TMP/bin/"*

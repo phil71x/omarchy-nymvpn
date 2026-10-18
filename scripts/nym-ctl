@@ -75,10 +75,15 @@ countries_for() {
            loads: map({key: .id, value: .load}) | from_entries,
            ipv6: map(select(.ipv6 != "") | {key: .id, value: .ipv6}) | from_entries,
            countries: (group_by(.code) | map({code: .[0].code, name: ($names[.[0].code] // (if .[0].code == "XK" then "Kosovo" else .[0].code end)), count: length})
-                       | sort_by(.name))}' > "$cache.$NYMCTL_DEADLINE" && mv "$cache.$NYMCTL_DEADLINE" "$cache"
+                       | sort_by(.name))}' > "$cache.$NYMCTL_DEADLINE" &&
+      has_countries "$cache.$NYMCTL_DEADLINE" && mv "$cache.$NYMCTL_DEADLINE" "$cache"
   fi
+  # A failed or empty fetch keeps a stale cache; with none at all, fail rather than show no countries.
+  has_countries "$cache" || { echo "Could not get the NymVPN $type gateway list" >&2; return 1; }
   cat "$cache"
 }
+
+has_countries() { jq -e '.countries | length > 0' "$1" >/dev/null 2>&1; }
 
 # "Entry point: Country { two_letter_iso_country_code: "CH" }" -> {kind, value}
 point() {
@@ -127,10 +132,11 @@ case $1 in
     entry=$(point "$(grep '^Entry point:' <<<"$gw")")
     exit_=$(point "$(grep '^Exit point:' <<<"$gw")")
     # Name specific servers from the cached gateway list.
+    # The lists are read from the cache files: as arguments, a long list would exceed the 128 KiB limit.
     type_entry=$(list_type "$hop" entry) type_exit=$(list_type "$hop" exit)
-    countries_for "$type_entry" >/dev/null   # fill the cache once before reading it twice
+    countries_for "$type_entry" >/dev/null && countries_for "$type_exit" >/dev/null || exit 1
     jq -nc --arg hop "$hop" --argjson entry "$entry" --argjson exit "$exit_" \
-      --slurpfile le <(countries_for "$type_entry") --slurpfile lx <(countries_for "$type_exit") '
+      --slurpfile le "$CACHE_DIR/$type_entry.json" --slurpfile lx "$CACHE_DIR/$type_exit.json" '
       {mode: (if $hop == "on" then "dvpn" else "mixnet" end),
        entry: ($entry + {name: ($le[0].servers[$entry.value] // "")}),
        exit: ($exit + {name: ($lx[0].servers[$exit.value] // "")}),
@@ -138,9 +144,10 @@ case $1 in
     ;;
   countries)
     hop=$(two_hop)
-    entry=$(countries_for "$(list_type "$hop" entry)") || exit 1
-    exit_=$(countries_for "$(list_type "$hop" exit)") || exit 1
-    jq -nc --argjson e "$entry" --argjson x "$exit_" '{entry: $e.countries, exit: $x.countries}'
+    type_entry=$(list_type "$hop" entry) type_exit=$(list_type "$hop" exit)
+    countries_for "$type_entry" >/dev/null && countries_for "$type_exit" >/dev/null || exit 1
+    jq -nc --slurpfile e "$CACHE_DIR/$type_entry.json" --slurpfile x "$CACHE_DIR/$type_exit.json" \
+      '{entry: $e[0].countries, exit: $x[0].countries}'
     ;;
   connect)    vpnc connect ;;
   disconnect) vpnc disconnect ;;

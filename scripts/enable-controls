@@ -11,6 +11,11 @@ RULE_SRC="$DIR/../polkit/50-$ID.rules"
 RULE_DST="/etc/polkit-1/rules.d/50-$ID.rules"
 GROUP=nym-vpn
 ACTION=com.nymvpn.vpnd.unix-access
+# Set when this script adds the user to GROUP, so disable-controls removes only what it added.
+MARKER="${XDG_STATE_HOME:-$HOME/.local/state}/$ID/added-to-group"
+
+# From the group database, so it is current without a new login; no pipe, so no pipefail race.
+in_group() { [[ " $(id -nG "$USER") " == *" $GROUP "* ]]; }
 
 cat <<EOF
 Enable NymVPN controls
@@ -18,7 +23,8 @@ Enable NymVPN controls
 The status card can then connect, disconnect and choose gateways without
 asking for your password each time. Two changes, made with sudo:
 
-  1. Add you ($USER) to the group $GROUP, created by the nym-vpnd package.
+  1. Add you ($USER) to the group $GROUP, created by the nym-vpnd package
+     (skipped if you are already in it).
   2. Install the polkit rule $RULE_DST,
      which lets members of $GROUP in a local, active session use the
      NymVPN daemon without a password.
@@ -38,7 +44,13 @@ if ! gum confirm "Enable controls?"; then
   exit 0
 fi
 
-sudo gpasswd -a "$USER" "$GROUP"
+if in_group; then
+  [[ -e $MARKER ]] || echo "You are already in $GROUP; Disable controls will leave you there."
+else
+  sudo gpasswd -a "$USER" "$GROUP"
+  mkdir -p "$(dirname -- "$MARKER")"
+  touch "$MARKER"
+fi
 sudo install -m 0644 -o root -g root "$RULE_SRC" "$RULE_DST"
 
 # polkitd reloads rules when the directory changes; give it a moment.

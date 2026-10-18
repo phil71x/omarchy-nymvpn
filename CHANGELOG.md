@@ -4,6 +4,15 @@
 
 All notable changes to the NymVPN Omarchy plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The gateway menus no longer offer only Auto and Random, with no error, when the gateway list cannot be fetched or comes back empty and none is cached: the card now says the list could not be fetched, and an empty list is never cached.
+- Gateways reached over IPv6 show their address in the card and the tooltip, in dVPN and Mixnet mode.
+- With the `nym-vpnd` daemon stopped, "since" is when the daemon stopped, not the time of the last tunnel state it logged.
+- **Disable controls** no longer removes you from the `nym-vpn` group if you were in it before **Enable controls**. For controls enabled with 1.0.1 or earlier, it asks, and keeps the membership by default.
+
 ## [1.0.1] - 2026-10-17
 
 ### Fixed

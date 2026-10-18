@@ -79,8 +79,25 @@ check "failed fetch keeps the stale cache intact" same "$(cmp -s "$TMP/wg.json.b
 rm -rf "$CACHE_DIR"
 code=0; ctl countries >/dev/null 2>&1 || code=$?
 check "failed fetch without cache fails" 1 "$code"
-check "failed fetch leaves no file behind" "" "$(ls -A "$CACHE_DIR")"
-FAKE_LIST_FAIL=0
+code=0; out=$(ctl config 2>"$TMP/err") || code=$?
+check "config fails without any gateway list, rather than offering no countries" "1||Could not get the NymVPN wg gateway list" \
+  "$code|$out|$(cat "$TMP/err")"
+FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=1
+code=0; out=$(ctl config 2>/dev/null) || code=$?
+check "an empty gateway list fails and is not cached" "1||no cache" "$code|$out|$([[ -e $CACHE_DIR/wg.json ]] || echo no cache)"
+FAKE_LIST_EMPTY=0
+check "failed and empty fetches leave no file behind" "" "$(ls -A "$CACHE_DIR")"
+
+# A list too long for a command-line argument (128 KiB) is read from the cache file.
+mkdir -p "$CACHE_DIR"
+jq -n '[range(4000) | {key: ("Gw" + tostring + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), value: "Gateway \(.)"}] | from_entries
+       | {servers: ., loads: {}, ipv6: {}, countries: [{code: "CH", name: "Switzerland", count: 4000}]}' > "$CACHE_DIR/wg.json"
+check "long gateway list cache is over 128 KiB" yes "$( (( $(stat -c %s "$CACHE_DIR/wg.json") > 131072 )) && echo yes)"
+code=0; out=$(ctl config 2>&1) || code=$?
+check "config with a long gateway list" "0|CH" "$code|$(jq -r '.countries.entry[0].code' <<<"$out" 2>/dev/null)"
+code=0; out=$(ctl countries 2>&1) || code=$?
+check "countries with a long gateway list" "0|CH" "$code|$(jq -r '.entry[0].code' <<<"$out" 2>/dev/null)"
+rm -rf "$CACHE_DIR"
 
 # Mixnet mode lists entry and exit gateways separately.
 reset_calls
