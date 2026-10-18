@@ -63,6 +63,21 @@ function duration(sinceEpoch, nowMs) {
   return Math.floor(minutes / 60) + " h " + (minutes % 60) + " min"
 }
 
+// Power switch, from the last known status: on while the daemon holds or seeks the tunnel
+// (up, paused with auto-connect, connecting, or disconnecting on its way to reconnect or to
+// wait for the network), so a click disconnects and stops it. It waits only while the tunnel
+// really goes down ("Disconnecting", "Disconnecting because of an error"), and never on a
+// stale reading, which may never be followed by the end of that disconnect.
+function switchOn(info) {
+  return info.status === "up" || info.status === "paused" ||
+    (info.status === "busy" &&
+     /^(Connecting|Disconnecting to reconnect|Disconnecting because device is offline)/.test(info.state || ""))
+}
+
+function switchSettling(info) {
+  return info.status === "busy" && !info.stale && !switchOn(info)
+}
+
 // Card controls from `nym-ctl authorized`: "authorized", "not-authorized" (polkit would ask
 // for a password: offer "Enable controls"), or "unavailable" (nym-vpnc missing, bad output).
 function controlsState(text) {
@@ -78,12 +93,13 @@ function controlsState(text) {
 function gatewayValue(point) {
   if (!point) return "auto"
   if (point.kind === "country") return point.value
-  if (point.kind === "server" || point.kind === "random") return point.kind
+  if (point.kind === "server" || point.kind === "random" || point.kind === "other") return point.kind
   return "auto"
 }
 
 // Dropdown options: Auto, Random, then one entry per country with its server count.
-// A specific server (only selectable in the NymVPN app) is listed first when it is the current choice.
+// A specific server, or a constraint the card does not know (a region, say), is set in the NymVPN
+// app and listed first when it is the current choice.
 function gatewayOptions(countries, point) {
   var options = [
     { value: "auto", label: "Auto", description: "Fastest gateway" },
@@ -91,6 +107,9 @@ function gatewayOptions(countries, point) {
   ]
   if (point && point.kind === "server") {
     options.unshift({ value: "server", label: point.name || "Specific server", description: "Set in the NymVPN app" })
+  }
+  if (point && point.kind === "other") {
+    options.unshift({ value: "other", label: point.name || "Other", description: "Set in the NymVPN app" })
   }
   for (var i = 0; i < (countries || []).length; i++) {
     var c = countries[i]
@@ -114,5 +133,5 @@ function withChoice(config, kind, value) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { controlsState, parseStatus, mergeStatus, shownStatus, withChoice, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions }
+  module.exports = { controlsState, parseStatus, mergeStatus, shownStatus, withChoice, statusLabel, modeLabel, modeIcon, protectionLabel, duration, gatewayValue, gatewayOptions, switchOn, switchSettling }
 }

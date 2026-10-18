@@ -65,13 +65,16 @@ BarWidget {
     else proc.running = true
   }
 
+  // Argument arrays, never shell strings (Util.execArgv keeps the login PATH).
   function openApp() {
-    if (bar) bar.run("uwsm-app -- nym-vpn.desktop")
+    Util.execArgv(["uwsm-app", "--", "nym-vpn.desktop"])
   }
 
-  // Runs enable-controls or disable-controls where sudo can ask for the password.
+  // Runs enable-controls or disable-controls where sudo can ask for the password. The launcher
+  // joins its arguments into a bash command, so the script path is quoted for that shell.
   function runInTerminal(script) {
-    if (bar) bar.run("omarchy-launch-floating-terminal-with-presentation bash " + scriptDir + "/" + script)
+    Util.execArgv(["omarchy-launch-floating-terminal-with-presentation", "bash",
+                   Util.shellQuote(scriptDir + "/" + script)])
   }
 
   implicitWidth: button.implicitWidth

@@ -68,6 +68,19 @@ check "stale cache is refetched" 1 "$(grep -c 'gateway list wg' "$CALLS")"
 touch -d '59 minutes ago' "$CACHE_DIR/wg.json"
 ctl countries >/dev/null
 check "cache younger than 1 h is reused" 1 "$(grep -c 'gateway list wg' "$CALLS")"
+# A cache without countries, as 1.0.1 could write after an empty fetch, is refetched at once.
+reset_calls
+cp "$CACHE_DIR/wg.json" "$TMP/wg.json.good"
+jq -c '.countries = []' "$TMP/wg.json.good" > "$CACHE_DIR/wg.json"
+ctl countries >/dev/null
+check "cache without countries is refetched" 1 "$(grep -c 'gateway list wg' "$CALLS")"
+# dVPN: one list for both sides, so a failing fetch over a stale cache is tried once, not twice.
+reset_calls
+touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
+FAKE_LIST_FAIL=1
+ctl config >/dev/null 2>&1
+FAKE_LIST_FAIL=0
+check "dVPN tries its one list once" 1 "$(grep -c 'gateway list wg' "$CALLS")"
 
 # Failed fetch: no partial or empty cache; a stale cache is still served.
 FAKE_LIST_FAIL=1
@@ -79,12 +92,15 @@ check "failed fetch keeps the stale cache intact" same "$(cmp -s "$TMP/wg.json.b
 rm -rf "$CACHE_DIR"
 code=0; ctl countries >/dev/null 2>&1 || code=$?
 check "failed fetch without cache fails" 1 "$code"
-code=0; out=$(ctl config 2>"$TMP/err") || code=$?
-check "config fails without any gateway list, rather than offering no countries" "1||Could not get the NymVPN wg gateway list" \
-  "$code|$out|$(cat "$TMP/err")"
+# Without any gateway list, config still gives the mode and the choices, so the mode can change,
+# with no countries and the reason, so the card never offers only Auto and Random.
+code=0; out=$(ctl config 2>/dev/null) || code=$?
+check "config without any gateway list keeps the mode, says why" "0|dvpn|server|null|Could not get the NymVPN wg gateway list" \
+  "$code|$(jq -r '[.mode, .entry.kind, (.countries | tostring), .listError] | join("|")' <<<"$out")"
 FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=1
 code=0; out=$(ctl config 2>/dev/null) || code=$?
-check "an empty gateway list fails and is not cached" "1||no cache" "$code|$out|$([[ -e $CACHE_DIR/wg.json ]] || echo no cache)"
+check "an empty gateway list is reported and not cached" "0|null|no cache" \
+  "$code|$(jq -r '.countries | tostring' <<<"$out")|$([[ -e $CACHE_DIR/wg.json ]] || echo no cache)"
 FAKE_LIST_EMPTY=0
 check "failed and empty fetches leave no file behind" "" "$(ls -A "$CACHE_DIR")"
 
@@ -122,7 +138,32 @@ check "mode change without reconnect when down" "$B tunnel set --two-hop off" "$
 
 reset_calls
 ctl entry auto >/dev/null
-check "entry auto" "$B gateway set --entry-auto-exclude-jurisdiction off" "$(vpnc_calls)"
+check "entry auto, exclusion never seen: off" "$B gateway set --entry-auto-exclude-jurisdiction off" "$(vpnc_calls)"
+
+# Auto keeps the jurisdiction exclusion last seen for its side, which the daemon forgets.
+FAKE_GATEWAY=auto
+out=$(ctl config)
+check "config reads Auto and its exclusion" "auto:on|auto:off" \
+  "$(jq -r '[.entry, .exit] | map(.kind + ":" + .exclude) | join("|")' <<<"$out")"
+reset_calls
+ctl entry auto >/dev/null; ctl exit auto >/dev/null
+check "auto sends the exclusion last seen" \
+  "$B gateway set --entry-auto-exclude-jurisdiction on|$B gateway set --exit-auto-exclude-jurisdiction off" "$(vpnc_calls)"
+FAKE_GATEWAY=unknown
+check "unknown constraint: only its side, as is, never Auto" 'country:CH|other:Region { region: "EU" }' \
+  "$(ctl config | jq -r '[.entry, .exit] | map(.kind + ":" + (if .kind == "country" then .value else .name end)) | join("|")')"
+# A failed `gateway get`, or output without the constraint lines, fails rather than showing "other".
+FAKE_GATEWAY=empty
+code=0; out=$(ctl config 2>"$TMP/err") || code=$?
+check "no constraint lines: config fails with a reason" "1||No gateway constraint in the nym-vpnc output" "$code|$out|$(head -n1 "$TMP/err")"
+# Auto printed without fields is still Auto.
+FAKE_GATEWAY=auto-bare
+check "bare Auto is Auto" "auto:off|auto:off" "$(ctl config | jq -r '[.entry, .exit] | map(.kind + ":" + .exclude) | join("|")')"
+# The exit's one switch drives both of its flags: either one on means on.
+FAKE_GATEWAY=auto-entry-point
+check "exit exclusion on when only the entry country is excluded" on "$(ctl config | jq -r .exit.exclude)"
+FAKE_GATEWAY=''
+rm -rf "$XDG_STATE_HOME"
 
 reset_calls
 ctl entry random >/dev/null

@@ -1,0 +1,3 @@
+Entry point: Auto
+Exit point: Auto
+Residential exit: off

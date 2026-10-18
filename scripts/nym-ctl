@@ -15,6 +15,8 @@ set -o pipefail
 POLKIT_ACTION=com.nymvpn.vpnd.unix-access
 LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn"
+# Last jurisdiction exclusion seen per side for Auto, which the daemon forgets once a country is chosen.
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/io.github.phil71x.nymvpn"
 ISO=/usr/share/iso-codes/json/iso_3166-1.json
 TIMEOUT=${NYMVPN_TIMEOUT:-60}
 [[ $TIMEOUT =~ ^[1-9][0-9]*$ ]] || TIMEOUT=60   # whole seconds: also used in bash arithmetic
@@ -57,14 +59,16 @@ list_type() {
   [[ $1 == on ]] && echo wg || echo "mixnet-$2"
 }
 
+# countries_for <type>: fills $CACHE_DIR/<type>.json, read by config, countries and nym-status:
 # {servers: {id: name}, loads: {id: Low|Medium|High}, ipv6: {id: exit IPv6, when it has one},
 #  countries: [{code, name, count}]},
-# cached per list type for an hour, since server load changes; nym-status reads the loads.
+# cached per list type for an hour, since server load changes, and fetched again sooner when the
+# cache has no countries (as 1.0.1 could write); nym-status reads the loads.
 # Written through a temporary file named after the deadline run, which removes any left behind.
 countries_for() {
   local type=$1 cache="$CACHE_DIR/$1.json"
   mkdir -p "$CACHE_DIR"
-  if [[ ! -s $cache || -n $(find "$cache" -mmin +60) ]]; then
+  if [[ ! -s $cache || -n $(find "$cache" -mmin +60) ]] || ! has_countries "$cache"; then
     nym-vpnc --table-style markdown gateway list "$type" |
       # Server names may contain "|", so anchor on the performance column "(load: …)".
       sed -nE 's/^\| ([1-9A-HJ-NP-Za-km-z]{32,}) +\| (.*\S) +\| [^|]*\[([A-Z]{2})\] +\| [^|]*\(load: ([A-Za-z]+)[^|]*\| [^|]*\| ([0-9a-f:]*) *\|.*/\1\t\3\t\2\t\4\t\5/p' |
@@ -80,20 +84,40 @@ countries_for() {
   fi
   # A failed or empty fetch keeps a stale cache; with none at all, fail rather than show no countries.
   has_countries "$cache" || { echo "Could not get the NymVPN $type gateway list" >&2; return 1; }
-  cat "$cache"
+}
+
+# lists_for <entry type> <exit type>: fills both caches; dVPN uses one list for both sides.
+lists_for() {
+  countries_for "$1" || return 1
+  [[ $2 == "$1" ]] || countries_for "$2"
 }
 
 has_countries() { jq -e '.countries | length > 0' "$1" >/dev/null 2>&1; }
 
 # "Entry point: Country { two_letter_iso_country_code: "CH" }" -> {kind, value}
+# "Entry point: Auto { exclude_user_country: true }" -> {kind: "auto", value: "", exclude: "on"}
+# The exit's one switch, --exit-auto-exclude-jurisdiction, drives both of its exclude_* flags.
+# A constraint it does not know is {kind: "other", name: <its text>}, shown as is, never as Auto.
 point() {
   local line=$1
   case $line in
     *two_letter_iso_country_code*) jq -nc --arg v "$(grep -oE '"[A-Z]{2}"' <<<"$line" | tr -d '"')" '{kind: "country", value: $v}' ;;
     *NodeIdentity*)                jq -nc --arg v "$(grep -oE 'key: "[^"]+"' <<<"$line" | cut -d'"' -f2)" '{kind: "server", value: $v}' ;;
-    *Random*)                      jq -nc '{kind: "random", value: ""}' ;;
-    *)                             jq -nc '{kind: "auto", value: ""}' ;;
+    *": Random"*)                  jq -nc '{kind: "random", value: ""}' ;;
+    *": Auto" | *": Auto "*)       local x=off
+                                   [[ $line == *"exclude_user_country: true"* || $line == *"exclude_entry_point_country: true"* ]] && x=on
+                                   jq -nc --arg x "$x" '{kind: "auto", value: "", exclude: $x}' ;;
+    "")                            echo "No gateway constraint in the nym-vpnc output" >&2; return 1 ;;
+    *)                             jq -nc --arg n "${line#*: }" '{kind: "other", value: "", name: $n}' ;;
   esac
+}
+
+# remember_exclusion <side> <point JSON>: keeps the exclusion of an Auto point for `<side> auto`.
+remember_exclusion() {
+  local x
+  x=$(jq -r 'select(.kind == "auto") | .exclude' <<<"$2")
+  [[ -n $x ]] || return 0
+  mkdir -p "$STATE_DIR" && printf '%s\n' "$x" > "$STATE_DIR/$1-auto-exclude"
 }
 
 reconnect_if_connected() {
@@ -128,24 +152,33 @@ case $1 in
   authorized) jq -nc '{authorized: true}' ;;
   config)
     hop=$(two_hop)
-    gw=$(vpnc gateway get)
-    entry=$(point "$(grep '^Entry point:' <<<"$gw")")
-    exit_=$(point "$(grep '^Exit point:' <<<"$gw")")
+    gw=$(vpnc gateway get) || exit 1
+    entry=$(point "$(grep '^Entry point:' <<<"$gw")") || exit 1
+    exit_=$(point "$(grep '^Exit point:' <<<"$gw")") || exit 1
+    remember_exclusion entry "$entry"; remember_exclusion exit "$exit_"
     # Name specific servers from the cached gateway list.
     # The lists are read from the cache files: as arguments, a long list would exceed the 128 KiB limit.
+    # Without a list, the mode and the choices still go out, with no countries and the reason
+    # (listError), so the card can change the mode and never offers only Auto and Random.
     type_entry=$(list_type "$hop" entry) type_exit=$(list_type "$hop" exit)
-    countries_for "$type_entry" >/dev/null && countries_for "$type_exit" >/dev/null || exit 1
-    jq -nc --arg hop "$hop" --argjson entry "$entry" --argjson exit "$exit_" \
-      --slurpfile le "$CACHE_DIR/$type_entry.json" --slurpfile lx "$CACHE_DIR/$type_exit.json" '
+    le="$CACHE_DIR/$type_entry.json" lx="$CACHE_DIR/$type_exit.json" list_error=""
+    if ! list_error=$(lists_for "$type_entry" "$type_exit" 2>&1); then
+      list_error=$(tail -n1 <<<"$list_error") le=/dev/null lx=/dev/null
+    else
+      list_error=""
+    fi
+    jq -nc --arg hop "$hop" --argjson entry "$entry" --argjson exit "$exit_" --arg err "$list_error" \
+      --slurpfile le "$le" --slurpfile lx "$lx" '
       {mode: (if $hop == "on" then "dvpn" else "mixnet" end),
-       entry: ($entry + {name: ($le[0].servers[$entry.value] // "")}),
-       exit: ($exit + {name: ($lx[0].servers[$exit.value] // "")}),
-       countries: {entry: $le[0].countries, exit: $lx[0].countries}}'
+       entry: ($entry + {name: ($le[0].servers[$entry.value] // $entry.name // "")}),
+       exit: ($exit + {name: ($lx[0].servers[$exit.value] // $exit.name // "")}),
+       countries: (if $err == "" then {entry: $le[0].countries, exit: $lx[0].countries} else null end)}
+      + (if $err == "" then {} else {listError: $err} end)'
     ;;
   countries)
     hop=$(two_hop)
     type_entry=$(list_type "$hop" entry) type_exit=$(list_type "$hop" exit)
-    countries_for "$type_entry" >/dev/null && countries_for "$type_exit" >/dev/null || exit 1
+    lists_for "$type_entry" "$type_exit" || exit 1
     jq -nc --slurpfile e "$CACHE_DIR/$type_entry.json" --slurpfile x "$CACHE_DIR/$type_exit.json" \
       '{entry: $e[0].countries, exit: $x[0].countries}'
     ;;
@@ -161,7 +194,9 @@ case $1 in
   entry | exit)
     side=$1
     case $2 in
-      auto)          vpnc gateway set "--$side-auto-exclude-jurisdiction" off ;;
+      auto)          exclude=$(cat "$STATE_DIR/$side-auto-exclude" 2>/dev/null)
+                     [[ $exclude == on ]] || exclude=off   # never seen: NymVPN's default
+                     vpnc gateway set "--$side-auto-exclude-jurisdiction" "$exclude" ;;
       random)        vpnc gateway set "--$side-random" ;;
       [A-Z][A-Z])    vpnc gateway set "--$side-country" "$2" ;;
       *) echo "usage: nym-ctl $side auto|random|CC" >&2; exit 2 ;;

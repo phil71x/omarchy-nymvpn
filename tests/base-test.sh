@@ -35,7 +35,7 @@ check() {
 mkdir -p "$TMP/bin" "$TMP/logs"
 export PATH="$TMP/bin:$PATH" XDG_RUNTIME_DIR="$TMP/run" XDG_CACHE_HOME="$TMP/cache" XDG_STATE_HOME="$TMP/state"
 export NYMVPN_LOG_DIR="$TMP/logs" CALLS="$TMP/calls" FIX
-export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=0 FAKE_HANG='' FAKE_HANG_TERM='' FAKE_KILLED=0 FAKE_STOPPED_AT=''
+export FAKE_DAEMON=active FAKE_PKCHECK=0 FAKE_MODE=dvpn FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=0 FAKE_HANG='' FAKE_HANG_TERM='' FAKE_KILLED=0 FAKE_STOPPED_AT='' FAKE_GATEWAY=''
 export CACHE_DIR="$XDG_CACHE_HOME/io.github.phil71x.nymvpn"
 
 cat > "$TMP/bin/systemctl" <<'EOF'
@@ -65,7 +65,8 @@ if [[ -n $FAKE_HANG && "$*" == *"$FAKE_HANG"* ]]; then
 fi
 case "$*" in
   *"tunnel get")     cat "$FIX/nym-vpnc/tunnel-get-$FAKE_MODE.txt" ;;
-  *"gateway get")    cat "$FIX/nym-vpnc/gateway-get.txt" ;;
+  # FAKE_GATEWAY=auto|auto-bare|auto-entry-point|empty|unknown: gateway-get-<name>.txt instead of gateway-get.txt.
+  *"gateway get")    cat "$FIX/nym-vpnc/gateway-get${FAKE_GATEWAY:+-$FAKE_GATEWAY}.txt" ;;
   # FAKE_LIST_EMPTY=1: the table header alone, as an empty list or a changed format would give.
   *"gateway list "*) (( FAKE_LIST_FAIL )) && exit 1
                      if (( FAKE_LIST_EMPTY )); then head -n2 "$FIX/nym-vpnc/gateway-list-${!#}.md"

@@ -1,0 +1,3 @@
+Entry point: Country { two_letter_iso_country_code: "CH" }
+Exit point: Region { region: "EU" }
+Residential exit: off

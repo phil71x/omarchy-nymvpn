@@ -45,7 +45,7 @@ if ! gum confirm "Enable controls?"; then
 fi
 
 if in_group; then
-  [[ -e $MARKER ]] || echo "You are already in $GROUP; Disable controls will leave you there."
+  [[ -e $MARKER ]] || echo "You are already in $GROUP; Disable controls will ask before removing you."
 else
   sudo gpasswd -a "$USER" "$GROUP"
   mkdir -p "$(dirname -- "$MARKER")"

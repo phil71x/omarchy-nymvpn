@@ -51,10 +51,12 @@ check "merge leaves the previous status untouched" "" \
   "$(model '(p => (M.mergeStatus(p, {status: "unknown"}), p.stale || ""))({status: "up"})')"
 
 # Gateway dropdowns (entry and exit) from `nym-ctl config`.
-check "gateway value per kind" "CH|server|random|auto|auto" \
-  "$(model '[{kind: "country", value: "CH"}, {kind: "server", value: "Gw1"}, {kind: "random"}, {kind: "auto"}, null].map(M.gatewayValue).join("|")')"
+check "gateway value per kind" "CH|server|random|other|auto|auto" \
+  "$(model '[{kind: "country", value: "CH"}, {kind: "server", value: "Gw1"}, {kind: "random"}, {kind: "other"}, {kind: "auto"}, null].map(M.gatewayValue).join("|")')"
 check "gateway options for a country choice" "auto:Auto|random:Random|BE:Belgium:1 server|CH:Switzerland:2 servers" \
   "$(model 'M.gatewayOptions([{code: "BE", name: "Belgium", count: 1}, {code: "CH", name: "Switzerland", count: 2}], {kind: "country", value: "CH"}).map(o => o.description && o.value.length == 2 ? o.value + ":" + o.label + ":" + o.description : o.value + ":" + o.label).join("|")')"
+check "gateway options list an unknown constraint first, as is" "other:Region { region: EU }|auto|random" \
+  "$(model '(o => o[0].value + ":" + o[0].label + "|" + o.slice(1).map(x => x.value).join("|"))(M.gatewayOptions([], {kind: "other", name: "Region { region: EU }"}))')"
 check "gateway options list the current server first" "server:Plain Gateway BE|auto|random" \
   "$(model '(o => o[0].value + ":" + o[0].label + "|" + o.slice(1).map(x => x.value).join("|"))(M.gatewayOptions([], {kind: "server", value: "Gw1", name: "Plain Gateway BE"}))')"
 
@@ -63,6 +65,15 @@ check "optimistic mode drops the old mode's countries" "mixnet|null|dvpn|1" \
   "$(model '(c => (n => [n.mode, String(n.countries), c.mode, c.countries.entry.length].join("|"))(M.withChoice(c, "mode", "mixnet")))({mode: "dvpn", countries: {entry: [{code: "CH"}], exit: []}})')"
 check "optimistic gateways" "country:CH|random:|auto:|server" \
   "$(model '(c => [M.withChoice(c, "entry", "CH").entry, M.withChoice(c, "exit", "random").exit, M.withChoice(c, "entry", "auto").entry].map(p => p.kind + ":" + p.value).concat([c.entry.kind]).join("|"))({entry: {kind: "server", value: "Gw1"}, exit: {kind: "auto"}})')"
+
+# Power switch: on while the daemon holds or seeks the tunnel, waiting only while it disconnects.
+# State texts as in the nym-vpnd log.
+check "switch on per state" "true|true|true|true|true|false|false|false|false|false" \
+  "$(model '[{status: "up"}, {status: "paused"}, {status: "busy", state: "Connecting wg to 1.2.3.4"}, {status: "busy", state: "Disconnecting to reconnect"}, {status: "busy", state: "Disconnecting because device is offline"}, {status: "busy", state: "Disconnecting"}, {status: "busy", state: "Disconnecting because of an error"}, {status: "down"}, {status: "unknown"}, {}].map(M.switchOn).join("|")')"
+check "switch settles only while the tunnel goes down" "false|false|true|true|false" \
+  "$(model '[{status: "busy", state: "Connecting"}, {status: "busy", state: "Disconnecting to reconnect"}, {status: "busy", state: "Disconnecting"}, {status: "busy", state: "Disconnecting because of an error"}, {status: "paused"}].map(M.switchSettling).join("|")')"
+check "switch never settles on a stale reading" false \
+  "$(model 'M.switchSettling({status: "busy", state: "Disconnecting", stale: true})')"
 
 check "controls state" "authorized|not-authorized|unavailable|unavailable" \
   "$(model '[JSON.stringify({authorized: true}), JSON.stringify({error: "not-authorized"}), JSON.stringify({error: "nym-vpnc-missing"}), "garbage"].map(M.controlsState).join("|")')"

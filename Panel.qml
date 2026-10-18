@@ -21,9 +21,10 @@ Panel {
   readonly property var info: hostWidget ? hostWidget.info : ({})
   readonly property string status: Model.shownStatus(info)
   readonly property bool connected: status === "up"
-  // Last known state up: the gateways stay listed, as the last known route, and the switch
-  // stays on, so it disconnects, while the state is unknown.
+  // Last known state up: the gateways stay listed, as the last known route, while the state is unknown.
   readonly property bool lastUp: info.status === "up"
+  // From the last known state too, so the switch still disconnects while the state is unknown.
+  readonly property bool switchOn: Model.switchOn(info)
   readonly property bool knownState: !!info.status && info.status !== "unknown"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   // Theme text color, as the built-in panels use. Not barForeground: on a transparent bar it
@@ -50,8 +51,10 @@ Panel {
   }
 
   // nym-vpnc takes ~6 s per call: config loads in the background, the last one stays shown.
+  // No read during an action: it could return the state before the change, and the action
+  // reads again when it ends.
   function loadConfig() {
-    if (configProc.running) return
+    if (configProc.running || acting) return
     configError = ""   // a new read: show "Loading…" rather than the last read's error
     configProc.running = true
   }
@@ -70,7 +73,7 @@ Panel {
   }
 
   function setGateway(side, value) {
-    if (value === "server" || !config || value === Model.gatewayValue(config[side])) return
+    if (value === "server" || value === "other" || !config || value === Model.gatewayValue(config[side])) return
     act([side, value], Model.withChoice(config, side, value))
   }
 
@@ -142,10 +145,10 @@ Panel {
         Component {
           id: powerSwitch
           ToggleSwitch {
-            checked: root.lastUp
-            busy: root.acting || root.status === "busy"
+            checked: root.switchOn
+            busy: root.acting || Model.switchSettling(root.info)
             foreground: root.foreground
-            onToggled: root.act([root.lastUp ? "disconnect" : "connect"])
+            onToggled: root.act([root.switchOn ? "disconnect" : "connect"])
           }
         }
 
@@ -403,7 +406,7 @@ Panel {
           var config = JSON.parse(text)
           if (config.mode) {
             root.config = config
-            root.configError = ""
+            root.configError = config.listError || ""   // no gateway list: the mode still shows
           }
           else if (config.error === "not-authorized") root.controls = "not-authorized"
         } catch (e) {}
@@ -434,19 +437,6 @@ Panel {
     }
   }
 
-
-  // One "label … value" line of the card.
-  component InfoPair: Item {
-    id: pair
-    property string label: ""
-    property string value: ""
-
-    width: parent.width
-    implicitHeight: Math.max(labelText.implicitHeight, valueText.implicitHeight)
-
-    InfoText { id: labelText; text: pair.label; opacity: 0.6 }
-    InfoText { id: valueText; anchors.right: parent.right; text: pair.value }
-  }
 
   // One line of the gateways table: side, country, IP, server load (low is better), uptime.
   // Hovering the country shows the node name, hovering the IP its IPv6 ("None" if it has none);

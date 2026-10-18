@@ -1,6 +1,6 @@
 # NymVPN for Omarchy
 
-*Created: October 14, 2026 -- Updated: October 17, 2026*
+*Created: October 14, 2026 -- Updated: October 18, 2026*
 
 Unofficial [NymVPN](https://nym.com) status for the [Omarchy](https://omarchy.org) bar: no password prompts, no changes to your system or daemon settings, and an alert when the tunnel drops.
 
@@ -57,6 +57,8 @@ Any program running as you can then control NymVPN without a password. **Disable
 
 Each control action takes a few seconds, the time `nym-vpnc` takes to answer. A change of mode or gateway while connected reconnects the tunnel.
 
+NymVPN forgets a gateway's jurisdiction exclusion once a country replaces Auto, so the card sends back the exclusion it last read when you choose Auto again. For the exit, one setting covers both your country and the entry's country: if either was excluded, Auto excludes both. It reads it each time the card loads the gateways: a change made in the NymVPN app since the card last showed Auto can be overwritten. A gateway setting the card does not offer, such as a region, is shown as set in the app.
+
 ## Settings and IPC
 
 Settings are fields on the widget's entry in `~/.config/omarchy/shell.json`:
@@ -77,7 +79,7 @@ omarchy-shell shell hide io.github.phil71x.nymvpn
 - **Read only by default** — the plugin reads the daemon log and, with controls enabled, calls `nym-vpnc`. It makes no network requests of its own and sends no telemetry.
 - **No password prompts** — before any `nym-vpnc` call, `pkcheck` checks that polkit allows it without a password; otherwise the call is not made.
 - **No hidden system changes** — the only system changes are the two made by **Enable controls**, in a visible terminal, after confirmation, and reverted by **Disable controls**. The plugin never changes NymVPN settings, never adds VPN bypasses, and never runs `sudo` from the bar.
-- **Files written** — the last state in `$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/` (cleared at reboot), gateway lists in `~/.cache/io.github.phil71x.nymvpn/`, and, with controls enabled, a note in `~/.local/state/io.github.phil71x.nymvpn/` that **Enable controls** added you to `nym-vpn`.
+- **Files written** — the last state in `$XDG_RUNTIME_DIR/io.github.phil71x.nymvpn/` (cleared at reboot), gateway lists in `~/.cache/io.github.phil71x.nymvpn/`, and, with controls enabled, in `~/.local/state/io.github.phil71x.nymvpn/`, a note that **Enable controls** added you to `nym-vpn` and the last jurisdiction exclusion seen for Auto gateways.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 

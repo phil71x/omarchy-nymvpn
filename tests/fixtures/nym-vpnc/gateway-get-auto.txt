@@ -1,0 +1,3 @@
+Entry point: Auto { exclude_user_country: true }
+Exit point: Auto { exclude_entry_point_country: false, exclude_user_country: false }
+Residential exit: off
