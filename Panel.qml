@@ -422,8 +422,8 @@ Panel {
     onExited: function(exitCode) {
       // A stale read, failed or not, says nothing about the current config: read again, after
       // the action if it still runs (loadConfig waits, and the action reads when it ends).
-      // A failure without stderr still shows an error, never "Loading…" for good; a message from
-      // stdout, set before or after this, is kept.
+      // A failure without stderr still shows an error, never "Loading…" for good. Quickshell 0.3.1
+      // finishes stdout and stderr before onExited, so a message from stdout is already set and kept.
       if (configProc.stale) root.loadConfig()
       else if (exitCode !== 0)
         root.configError = configErr.text.trim().split("\n")[0] || root.configError || "Could not read the NymVPN settings"

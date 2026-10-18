@@ -14,7 +14,7 @@ All notable changes to the NymVPN Omarchy plugin. The format follows [Keep a Cha
 - With the `nym-vpnd` daemon stopped, "since" is when the daemon stopped, not the time of the last tunnel state it logged, nor of an earlier stop while it is stopping.
 - The power switch stays on while NymVPN is offline waiting to reconnect or still connecting, so a click disconnects and stops it; before, it showed off and a click connected, and a pending connection could not be cancelled.
 - After a mode or gateway change, the card no longer keeps a configuration read before the change took effect.
-- Choosing **Auto** for a gateway keeps the jurisdiction exclusion set in the NymVPN app instead of turning it off (for the exit, NymVPN has one setting for your country and the entry's country: if either was excluded, Auto excludes both), and a gateway setting the card does not offer, such as a region, is shown as set in the app instead of as Auto.
+- Choosing **Auto** for a gateway keeps the jurisdiction exclusion the card last read for that side on Auto instead of turning it off (off if the card never saw that side on Auto; for the exit, NymVPN has one setting for your country and the entry's country: if either was excluded, Auto excludes both), and a gateway setting the card does not offer, such as a region, is shown as set in the app instead of as Auto.
 - **Disable controls** no longer removes you from the `nym-vpn` group if you were in it before **Enable controls**. For controls enabled with 1.0.1 or earlier, it asks, and keeps the membership by default.
 
 ## [1.0.1] - 2026-10-17
