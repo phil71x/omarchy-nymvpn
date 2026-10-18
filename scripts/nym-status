@@ -13,9 +13,13 @@
 #   empty without controls (load also empty once the cache is over an hour old);
 #   an IPv6 is "None" when the gateway has none
 
+# ID, the plugin id, from the file nym-ctl also reads; found without dirname, as in nym-ctl.
+[[ ${BASH_SOURCE[0]} == */* ]] && CONTROLS="${BASH_SOURCE[0]%/*}/controls.sh" || CONTROLS=./controls.sh
+# shellcheck source-path=SCRIPTDIR source=controls.sh
+source "$CONTROLS" 2>/dev/null || { echo "Missing $CONTROLS" >&2; exit 1; }
 LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn"
-RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}/io.github.phil71x.nymvpn"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$ID"
+RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}/$ID"
 STATE_FILE="$RUN_DIR/last-status"
 UNKNOWN_FILE="$RUN_DIR/unknown-notified"   # the unknown toast was sent for this spell
 
@@ -82,7 +86,9 @@ fi
 # with auto-connect, nothing to leak and the daemon reconnects by itself; down = Disconnected,
 # Error, Offline without auto-connect, daemon stopped; unknown = no state line (log missing,
 # unreadable or reworded) or a state not listed here, so no false alarm.
-reason=""
+# holding: the daemon holds or seeks the tunnel, so the card's switch shows on. "Disconnecting"
+# and "Disconnecting because of an error" take the tunnel down; the two others come back.
+reason="" holding=false
 if ! systemctl is-active --quiet nym-vpnd; then
   status=down; state="nym-vpnd stopped"
   # Since the daemon left active, not since the last tunnel state it logged; unknown if it never ran.
@@ -95,23 +101,17 @@ if ! systemctl is-active --quiet nym-vpnd; then
   fi
 else
   case $state in
-    Connected*)                         status=up ;;
-    Connecting* | Disconnecting*)       status=busy ;;
-    "Offline, auto-connect"*)           status=paused ;;
+    Connected*)                         status=up holding=true ;;
+    Connecting* | "Disconnecting to reconnect"* | "Disconnecting because device is offline"*)
+                                        status=busy holding=true ;;
+    Disconnecting*)                     status=busy ;;
+    "Offline, auto-connect"*)           status=paused holding=true ;;
     Disconnected* | Error* | Offline*)  status=down ;;
     "")                                 status=unknown; reason="No tunnel state in the NymVPN log"
                                         $readable || reason="Cannot read the NymVPN log" ;;
     *)                                  status=unknown; reason="Unknown NymVPN state: ${state%%,*}" ;;
   esac
 fi
-
-# The only place the card's switch depends on the log wording: "Disconnecting" and
-# "Disconnecting because of an error" take the tunnel down, the other two come back.
-holding=false
-case $status:$state in
-  up:* | paused:* | busy:Connecting* | "busy:Disconnecting to reconnect"* | \
-  "busy:Disconnecting because device is offline"*) holding=true ;;
-esac
 
 # Toast only on stable transitions; busy and unknown keep the previous status. Toasts are sent for
 # up and down only: paused happens at every suspend and would toast several times a day.

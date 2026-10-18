@@ -16,6 +16,12 @@ for case in connected:up connected-mixnet:up connecting:busy disconnecting:busy 
   check "status ${case%%:*}" "${case##*:}" "$(status | jq -r .status)"
 done
 
+# The plugin id and paths come from scripts/controls.sh, shared with nym-ctl.
+mkdir -p "$TMP/lone"
+cp "$ROOT/scripts/nym-status" "$TMP/lone/"
+code=0; err=$("$BASH" "$TMP/lone/nym-status" 2>&1 >/dev/null) || code=$?
+check "controls.sh missing: fails with a reason" "1|Missing $TMP/lone/controls.sh" "$code|$err"
+
 # holding: the daemon holds or seeks the tunnel, so the card's switch shows on and a click
 # disconnects. Real nym-vpnd states, from the live log (October 2026).
 line() { echo "2026-10-13T19:25:32.000000Z  INFO nym_vpn_lib::tunnel_state_machine: New tunnel state: $1" > "$TMP/logs/nym-vpnd.log"; }

@@ -414,6 +414,7 @@ Panel {
             root.configError = config.listError || ""   // no gateway list: the mode still shows
           }
           else if (config.error === "not-authorized") root.controls = "not-authorized"
+          else if (config.message) root.configError = config.message   // nym-ctl's own error, such as nym-vpnc missing
         } catch (e) {}
       }
     }
@@ -421,9 +422,11 @@ Panel {
     onExited: function(exitCode) {
       // A stale read, failed or not, says nothing about the current config: read again, after
       // the action if it still runs (loadConfig waits, and the action reads when it ends).
+      // A failure without stderr still shows an error, never "Loading…" for good; a message from
+      // stdout, set before or after this, is kept.
       if (configProc.stale) root.loadConfig()
-      else if (exitCode !== 0 && configErr.text.trim() !== "")
-        root.configError = configErr.text.trim().split("\n")[0]
+      else if (exitCode !== 0)
+        root.configError = configErr.text.trim().split("\n")[0] || root.configError || "Could not read the NymVPN settings"
     }
   }
 
@@ -480,6 +483,7 @@ Panel {
     InfoText {
       width: gw.unit * 7.25
       text: gw.ip
+      elide: Text.ElideMiddle   // an IPv6 address is wider than the column
       opacity: gw.header ? 0.6 : 1
 
       MouseArea {

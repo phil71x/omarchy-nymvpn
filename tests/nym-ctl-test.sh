@@ -26,6 +26,14 @@ check "nym-vpnc missing: error" nym-vpnc-missing "$(jq -r .error <<<"$out")"
 check "nym-vpnc missing: exit code" 3 "$code"
 check "nym-vpnc missing: pkcheck not called" "" "$(calls)"
 
+# Without scripts/controls.sh (ID, polkit action, paths), it stops before calling anything.
+reset_calls
+mkdir -p "$TMP/lone"
+cp "$ROOT/scripts/nym-ctl" "$TMP/lone/"
+code=0; err=$("$BASH" "$TMP/lone/nym-ctl" config 2>&1 >/dev/null) || code=$?
+check "controls.sh missing: fails before pkcheck" "1|Missing $TMP/lone/controls.sh|" \
+  "$code|$(tail -n1 <<<"$err")|$(calls)"
+
 # authorized: the polkit guard alone, so the card can choose read-only or controls instantly.
 reset_calls
 check "authorized" '{"authorized":true}' "$(ctl authorized)"
@@ -104,7 +112,7 @@ rm -rf "$CACHE_DIR"
 # Without any gateway list, config still gives the mode and the choices, so the mode can change,
 # with no countries and the reason, so the card never offers only Auto and Random.
 code=0; out=$(ctl config 2>/dev/null) || code=$?
-check "config without any gateway list keeps the mode, says why" "0|dvpn|server|null|Could not get the NymVPN wg gateway list" \
+check "config without any gateway list keeps the mode, says why" "0|dvpn|server|null|Could not get the NymVPN dVPN gateway list" \
   "$code|$(jq -r '[.mode, .entry.kind, (.countries | tostring), .listError] | join("|")' <<<"$out")"
 FAKE_LIST_FAIL=0 FAKE_LIST_EMPTY=1
 code=0; out=$(ctl config 2>/dev/null) || code=$?
@@ -133,12 +141,12 @@ check "mixnet config mode" mixnet "$(jq -r .mode <<<"$out")"
 rm -f "$CACHE_DIR/mixnet-exit.json"
 code=0; out=$(FAKE_LIST_FAIL=mixnet-exit ctl config 2>/dev/null) || code=$?
 check "mixnet exit list missing: entry kept, exit null, reason given" \
-  "0|BE XK|null|Plain Gateway BE|Could not get the NymVPN mixnet-exit gateway list" \
+  "0|BE XK|null|Plain Gateway BE|Could not get the NymVPN Mixnet exit gateway list" \
   "$code|$(jq -r '[(.countries.entry | map(.code) | join(" ")), (.countries.exit | tostring), .entry.name, .listError] | join("|")' <<<"$out")"
 rm -f "$CACHE_DIR"/mixnet-*.json
 out=$(FAKE_LIST_FAIL=1 ctl config 2>/dev/null)
 check "mixnet, both lists missing: both named" \
-  "null|Could not get the NymVPN mixnet-entry and mixnet-exit gateway lists" \
+  "null|Could not get the NymVPN Mixnet entry and Mixnet exit gateway lists" \
   "$(jq -r '[(.countries | tostring), .listError] | join("|")' <<<"$out")"
 FAKE_MODE=dvpn
 

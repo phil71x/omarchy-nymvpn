@@ -13,8 +13,11 @@
 set -o pipefail
 # ID, ACTION (the polkit action) and STATE_DIR, which keeps the last jurisdiction exclusion seen
 # per side for Auto: the daemon forgets it once a country is chosen.
+# Without it, the polkit action would be empty: stop before calling anything.
+# Next to this script, found without dirname, which a minimal PATH may lack.
+[[ ${BASH_SOURCE[0]} == */* ]] && CONTROLS="${BASH_SOURCE[0]%/*}/controls.sh" || CONTROLS=./controls.sh
 # shellcheck source-path=SCRIPTDIR source=controls.sh
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/controls.sh"
+source "$CONTROLS" 2>/dev/null || { echo "Missing $CONTROLS" >&2; exit 1; }
 LOG_DIR=${NYMVPN_LOG_DIR:-/var/log/nym-vpnd}
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$ID"
 ISO=/usr/share/iso-codes/json/iso_3166-1.json
@@ -163,9 +166,10 @@ case $1 in
     # the mode and never offers only Auto and Random.
     type_entry=$(list_type "$hop" entry) type_exit=$(list_type "$hop" exit)
     le="$CACHE_DIR/$type_entry.json" lx="$CACHE_DIR/$type_exit.json" missing=()
-    countries_for "$type_entry" || { missing+=("$type_entry"); le=/dev/null; }
+    # Named as the card names them: "wg" is dVPN.
+    countries_for "$type_entry" || { missing+=("$([[ $hop == on ]] && echo dVPN || echo Mixnet entry)"); le=/dev/null; }
     if [[ $type_exit == "$type_entry" ]]; then lx=$le   # dVPN: one list for both sides
-    elif ! countries_for "$type_exit"; then missing+=("$type_exit"); lx=/dev/null; fi
+    elif ! countries_for "$type_exit"; then missing+=("Mixnet exit"); lx=/dev/null; fi
     case ${#missing[@]} in
       0) list_error="" ;;
       1) list_error="Could not get the NymVPN ${missing[0]} gateway list" ;;
