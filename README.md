@@ -41,7 +41,7 @@ To remove the plugin, first click **Disable controls** in the card if you enable
 
 ```bash
 omarchy plugin remove io.github.phil71x.nymvpn
-rm -rf ~/.cache/io.github.phil71x.nymvpn ~/.local/state/io.github.phil71x.nymvpn
+rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/io.github.phil71x.nymvpn" "${XDG_STATE_HOME:-$HOME/.local/state}/io.github.phil71x.nymvpn"
 ```
 
 ## Enabling the NymVPN controls

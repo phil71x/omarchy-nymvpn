@@ -16,6 +16,24 @@ for case in connected:up connected-mixnet:up connecting:busy disconnecting:busy 
   check "status ${case%%:*}" "${case##*:}" "$(status | jq -r .status)"
 done
 
+# holding: the daemon holds or seeks the tunnel, so the card's switch shows on and a click
+# disconnects. Real nym-vpnd states, from the live log (October 2026).
+line() { echo "2026-10-13T19:25:32.000000Z  INFO nym_vpn_lib::tunnel_state_machine: New tunnel state: $1" > "$TMP/logs/nym-vpnd.log"; }
+got=""
+for st in "Connected wg to 192.0.2.10:51822 → 198.51.100.20:51822" "Offline, auto-connect once back online" \
+          "Connecting wg, selecting gateways, fallback entry" "Disconnecting to reconnect" \
+          "Disconnecting because device is offline" "Disconnecting" "Disconnecting because of an error" \
+          "Disconnected" "Error state" "Offline" "Hibernating"; do
+  line "$st"; got+="$(status | jq -r .holding) "
+done
+check "holding while up, paused, connecting or reconnecting" \
+  "true true true true true false false false false false false " "$got"
+line "Connected wg to 192.0.2.10:51822 → 198.51.100.20:51822"
+FAKE_DAEMON=inactive
+check "daemon stopped: not holding" false "$(status | jq -r .holding)"
+FAKE_DAEMON=active
+reset_calls
+
 use_log connected
 out=$(status)
 check "route fields from the Connected and gateway lines" "wg 192.0.2.10 198.51.100.20 BE 97% CH 99%" \
@@ -83,7 +101,11 @@ check "daemon stopped, stop time unknown: no since from the old tunnel state" "|
 FAKE_STOPPED_AT=@1760426700
 check "daemon stopped: since when it stopped" "$(date -d @1760426700 +%H:%M)|1760426700" \
   "$(status | jq -r '.since + "|" + .sinceEpoch')"
-FAKE_DAEMON=active FAKE_STOPPED_AT=''
+# While it stops, the inactive time is still the previous stop, maybe days old.
+FAKE_DAEMON=deactivating FAKE_INACTIVE_AT=@1760000000
+check "daemon stopping: since when it began to stop, not the previous stop" "$(date -d @1760426700 +%H:%M)|1760426700" \
+  "$(status | jq -r '.since + "|" + .sinceEpoch')"
+FAKE_DAEMON=active FAKE_STOPPED_AT='' FAKE_INACTIVE_AT=''
 
 # Toasts: only on a change between stable statuses, never on the first run.
 reset_calls

@@ -42,9 +42,9 @@ check "unknown command: nothing called" "" "$(calls)"
 check "usage lists the whole header" "{\"error\": \"not-authorized\" | \"nym-vpnc-missing\", \"message\": …} and exits 3." "$(ctl bogus 2>&1 | tail -1)"
 
 # Gateway list parsing. Server names may contain "|"; country names come from ISO 3166.
-out=$(ctl countries)
+out=$(ctl config)
 check "dVPN entry countries" "BE:Belgium:1 XK:Kosovo:1 CH:Switzerland:2" \
-  "$(jq -r '[.entry[] | "\(.code):\(.name):\(.count)"] | join(" ")' <<<"$out")"
+  "$(jq -r '[.countries.entry[] | "\(.code):\(.name):\(.count)"] | join(" ")' <<<"$out")"
 check "server names containing |" "t-lab | CH|💥Petroff Staking |CH#8💥|Pierrot Gateway | Kosovo" \
   "$(jq -r '[.servers[]] | .[1:] | join("|")' "$CACHE_DIR/wg.json")"
 check "server loads from the performance column" "Low Low High Medium" \
@@ -63,17 +63,28 @@ check "config reads the fresh cache" "" "$(grep 'gateway list' "$CALLS" || true)
 # Cache lifetime: 1 h, since server load changes.
 reset_calls
 touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
-ctl countries >/dev/null
+ctl config >/dev/null
 check "stale cache is refetched" 1 "$(grep -c 'gateway list wg' "$CALLS")"
 touch -d '59 minutes ago' "$CACHE_DIR/wg.json"
-ctl countries >/dev/null
+ctl config >/dev/null
 check "cache younger than 1 h is reused" 1 "$(grep -c 'gateway list wg' "$CALLS")"
 # A cache without countries, as 1.0.1 could write after an empty fetch, is refetched at once.
 reset_calls
 cp "$CACHE_DIR/wg.json" "$TMP/wg.json.good"
 jq -c '.countries = []' "$TMP/wg.json.good" > "$CACHE_DIR/wg.json"
-ctl countries >/dev/null
+ctl config >/dev/null
 check "cache without countries is refetched" 1 "$(grep -c 'gateway list wg' "$CALLS")"
+# A cache is checked once per read: a jq on PATH that counts the checks before running the real one.
+mkdir -p "$TMP/jqbin"
+printf '#!/usr/bin/env bash\n[[ "$*" == *".countries | length > 0"* ]] && echo check >> %q\nexec %q "$@"\n' \
+  "$TMP/jq-checks" "$(command -v jq)" > "$TMP/jqbin/jq"
+chmod +x "$TMP/jqbin/jq"
+for age in 59 61; do
+  rm -f "$TMP/jq-checks"
+  touch -d "$age minutes ago" "$CACHE_DIR/wg.json"
+  PATH="$TMP/jqbin:$PATH" ctl config >/dev/null
+  check "cache $age min old: checked once" 1 "$(wc -l < "$TMP/jq-checks")"
+done
 # dVPN: one list for both sides, so a failing fetch over a stale cache is tried once, not twice.
 reset_calls
 touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
@@ -86,12 +97,10 @@ check "dVPN tries its one list once" 1 "$(grep -c 'gateway list wg' "$CALLS")"
 FAKE_LIST_FAIL=1
 cp "$CACHE_DIR/wg.json" "$TMP/wg.json.before"
 touch -d '61 minutes ago' "$CACHE_DIR/wg.json"
-code=0; out=$(ctl countries) || code=$?
-check "failed fetch serves the stale cache" "0 BE XK CH" "$code $(jq -r '[.entry[].code] | join(" ")' <<<"$out")"
+code=0; out=$(ctl config) || code=$?
+check "failed fetch serves the stale cache" "0 BE XK CH" "$code $(jq -r '[.countries.entry[].code] | join(" ")' <<<"$out")"
 check "failed fetch keeps the stale cache intact" same "$(cmp -s "$TMP/wg.json.before" "$CACHE_DIR/wg.json" && echo same)"
 rm -rf "$CACHE_DIR"
-code=0; ctl countries >/dev/null 2>&1 || code=$?
-check "failed fetch without cache fails" 1 "$code"
 # Without any gateway list, config still gives the mode and the choices, so the mode can change,
 # with no countries and the reason, so the card never offers only Auto and Random.
 code=0; out=$(ctl config 2>/dev/null) || code=$?
@@ -111,18 +120,36 @@ jq -n '[range(4000) | {key: ("Gw" + tostring + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 check "long gateway list cache is over 128 KiB" yes "$( (( $(stat -c %s "$CACHE_DIR/wg.json") > 131072 )) && echo yes)"
 code=0; out=$(ctl config 2>&1) || code=$?
 check "config with a long gateway list" "0|CH" "$code|$(jq -r '.countries.entry[0].code' <<<"$out" 2>/dev/null)"
-code=0; out=$(ctl countries 2>&1) || code=$?
-check "countries with a long gateway list" "0|CH" "$code|$(jq -r '.entry[0].code' <<<"$out" 2>/dev/null)"
 rm -rf "$CACHE_DIR"
 
 # Mixnet mode lists entry and exit gateways separately.
 reset_calls
 FAKE_MODE=mixnet
-out=$(ctl countries)
-check "mixnet entry and exit countries" "BE XK|CH" "$(jq -r '[.entry[].code] | join(" ")' <<<"$out")|$(jq -r '[.exit[].code] | join(" ")' <<<"$out")"
+out=$(ctl config)
+check "mixnet entry and exit countries" "BE XK|CH" "$(jq -r '[.countries.entry[].code] | join(" ")' <<<"$out")|$(jq -r '[.countries.exit[].code] | join(" ")' <<<"$out")"
 check "mixnet lists fetched" "mixnet-entry mixnet-exit" "$(grep -o 'gateway list .*' "$CALLS" | cut -d' ' -f3 | paste -sd' ')"
-check "mixnet config mode" mixnet "$(ctl config | jq -r .mode)"
+check "mixnet config mode" mixnet "$(jq -r .mode <<<"$out")"
+# One list missing hides only its side's countries; the other side keeps its list and names.
+rm -f "$CACHE_DIR/mixnet-exit.json"
+code=0; out=$(FAKE_LIST_FAIL=mixnet-exit ctl config 2>/dev/null) || code=$?
+check "mixnet exit list missing: entry kept, exit null, reason given" \
+  "0|BE XK|null|Plain Gateway BE|Could not get the NymVPN mixnet-exit gateway list" \
+  "$code|$(jq -r '[(.countries.entry | map(.code) | join(" ")), (.countries.exit | tostring), .entry.name, .listError] | join("|")' <<<"$out")"
+rm -f "$CACHE_DIR"/mixnet-*.json
+out=$(FAKE_LIST_FAIL=1 ctl config 2>/dev/null)
+check "mixnet, both lists missing: both named" \
+  "null|Could not get the NymVPN mixnet-entry and mixnet-exit gateway lists" \
+  "$(jq -r '[(.countries | tostring), .listError] | join("|")' <<<"$out")"
 FAKE_MODE=dvpn
+
+# A failed `tunnel get`, or one without the two-hop line, fails rather than showing Mixnet.
+# FAKE_MODE=fail has no fixture, so the fake nym-vpnc fails.
+for mode in fail reworded; do
+  reset_calls
+  code=0; out=$(FAKE_MODE=$mode ctl config 2>"$TMP/err") || code=$?
+  check "tunnel get $mode: config fails with a reason, fetches no list" "1||No two-hop setting in the nym-vpnc output|" \
+    "$code|$out|$(tail -n1 "$TMP/err")|$(grep 'gateway list' "$CALLS" || true)"
+done
 
 # Actions, with nym-vpnc arguments as documented by `nym-vpnc gateway set --help`.
 B="nym-vpnc --table-style blank"
@@ -147,6 +174,7 @@ check "config reads Auto and its exclusion" "auto:on|auto:off" \
   "$(jq -r '[.entry, .exit] | map(.kind + ":" + .exclude) | join("|")' <<<"$out")"
 reset_calls
 ctl entry auto >/dev/null; ctl exit auto >/dev/null
+check "remembered exclusion leaves no temporary file" "entry-auto-exclude exit-auto-exclude" "$(find "$XDG_STATE_HOME/io.github.phil71x.nymvpn" -type f -printf '%f\n' | sort | paste -sd' ')"
 check "auto sends the exclusion last seen" \
   "$B gateway set --entry-auto-exclude-jurisdiction on|$B gateway set --exit-auto-exclude-jurisdiction off" "$(vpnc_calls)"
 FAKE_GATEWAY=unknown
@@ -216,6 +244,6 @@ FAKE_KILLED=0
 # A gateway list stopped mid-fetch leaves no temporary cache file.
 rm -rf "$CACHE_DIR"
 FAKE_HANG="gateway list"
-NYMVPN_TIMEOUT=1 ctl countries >/dev/null 2>&1 || true
+NYMVPN_TIMEOUT=1 ctl config >/dev/null 2>&1 || true
 check "stopped fetch: no temporary cache file" "" "$(ls -A "$CACHE_DIR" 2>/dev/null)"
 FAKE_HANG=

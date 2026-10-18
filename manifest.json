@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.phil71x.nymvpn",
   "name": "NymVPN",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "phil71x",
   "license": "MIT",
   "description": "Unofficial NymVPN status in the bar: tunnel state without password prompts, a status card, alerts when the tunnel drops, optional controls",

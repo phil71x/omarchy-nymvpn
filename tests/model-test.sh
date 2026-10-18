@@ -66,12 +66,14 @@ check "optimistic mode drops the old mode's countries" "mixnet|null|dvpn|1" \
 check "optimistic gateways" "country:CH|random:|auto:|server" \
   "$(model '(c => [M.withChoice(c, "entry", "CH").entry, M.withChoice(c, "exit", "random").exit, M.withChoice(c, "entry", "auto").entry].map(p => p.kind + ":" + p.value).concat([c.entry.kind]).join("|"))({entry: {kind: "server", value: "Gw1"}, exit: {kind: "auto"}})')"
 
-# Power switch: on while the daemon holds or seeks the tunnel, waiting only while it disconnects.
-# State texts as in the nym-vpnd log.
-check "switch on per state" "true|true|true|true|true|false|false|false|false|false" \
-  "$(model '[{status: "up"}, {status: "paused"}, {status: "busy", state: "Connecting wg to 1.2.3.4"}, {status: "busy", state: "Disconnecting to reconnect"}, {status: "busy", state: "Disconnecting because device is offline"}, {status: "busy", state: "Disconnecting"}, {status: "busy", state: "Disconnecting because of an error"}, {status: "down"}, {status: "unknown"}, {}].map(M.switchOn).join("|")')"
-check "switch settles only while the tunnel goes down" "false|false|true|true|false" \
-  "$(model '[{status: "busy", state: "Connecting"}, {status: "busy", state: "Disconnecting to reconnect"}, {status: "busy", state: "Disconnecting"}, {status: "busy", state: "Disconnecting because of an error"}, {status: "paused"}].map(M.switchSettling).join("|")')"
+# Power switch: on while the daemon holds or seeks the tunnel (nym-status's holding, whose
+# states are tested in nym-status-test.sh), waiting only while it disconnects.
+check "switch on only when holding" "true|false|false|false" \
+  "$(model '[{status: "busy", holding: true}, {status: "busy", holding: false}, {status: "up"}, {}].map(M.switchOn).join("|")')"
+check "stale reading keeps the switch of the last known state" true \
+  "$(model 'M.switchOn(M.mergeStatus({status: "up", holding: true}, {status: "unknown", holding: false}))')"
+check "switch settles only while the tunnel goes down" "false|true|false" \
+  "$(model '[{status: "busy", holding: true}, {status: "busy", holding: false}, {status: "paused", holding: true}].map(M.switchSettling).join("|")')"
 check "switch never settles on a stale reading" false \
   "$(model 'M.switchSettling({status: "busy", state: "Disconnecting", stale: true})')"
 

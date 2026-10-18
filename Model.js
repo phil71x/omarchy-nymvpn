@@ -64,14 +64,11 @@ function duration(sinceEpoch, nowMs) {
 }
 
 // Power switch, from the last known status: on while the daemon holds or seeks the tunnel
-// (up, paused with auto-connect, connecting, or disconnecting on its way to reconnect or to
-// wait for the network), so a click disconnects and stops it. It waits only while the tunnel
-// really goes down ("Disconnecting", "Disconnecting because of an error"), and never on a
+// (nym-status's holding: up, paused, connecting, or disconnecting to reconnect), so a click
+// disconnects and stops it. It waits only while the tunnel really goes down, and never on a
 // stale reading, which may never be followed by the end of that disconnect.
 function switchOn(info) {
-  return info.status === "up" || info.status === "paused" ||
-    (info.status === "busy" &&
-     /^(Connecting|Disconnecting to reconnect|Disconnecting because device is offline)/.test(info.state || ""))
+  return info.holding === true
 }
 
 function switchSettling(info) {

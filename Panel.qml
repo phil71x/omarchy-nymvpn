@@ -37,7 +37,7 @@ Panel {
   property string controls: "unknown"
   property var config: null      // `nym-ctl config`: mode, entry, exit, countries
   property var previousConfig: null   // restored if an action fails
-  property bool reloadPending: false  // an action started during a config read: read again
+  property int configGen: 0   // bumped by every action: a config read started before it is stale
   property bool acting: false
   property string actionError: ""
   property string configError: ""   // the last config read failed; cleared by the next good one
@@ -56,6 +56,7 @@ Panel {
   function loadConfig() {
     if (configProc.running || acting) return
     configError = ""   // a new read: show "Loading…" rather than the last read's error
+    configProc.gen = configGen
     configProc.running = true
   }
 
@@ -64,10 +65,12 @@ Panel {
   function act(args, choice) {
     if (acting || !ctl) return
     actionError = ""
+    // A mode change drops the old mode's lists: drop their error too, so "Loading…" shows.
+    if (args[0] === "mode") configError = ""
     acting = true
     previousConfig = config
     if (choice) config = choice
-    if (configProc.running) reloadPending = true
+    configGen++
     actionProc.command = ["bash", ctl].concat(args)
     actionProc.running = true
   }
@@ -304,7 +307,7 @@ Panel {
 
           SearchableDropdown {
             id: entryDropdown
-            visible: !!root.config && !!root.config.countries
+            visible: !!root.config && !!root.config.countries && !!root.config.countries.entry
             width: parent.width
             label: "Entry"
             placeholderText: "Search countries…"
@@ -319,7 +322,7 @@ Panel {
 
           SearchableDropdown {
             id: exitDropdown
-            visible: !!root.config && !!root.config.countries
+            visible: !!root.config && !!root.config.countries && !!root.config.countries.exit
             width: parent.width
             label: "Exit"
             placeholderText: "Search countries…"
@@ -396,12 +399,14 @@ Panel {
 
   Process {
     id: configProc
+    property int gen: 0   // root.configGen when this read started
+    readonly property bool stale: gen !== root.configGen
     command: ["bash", root.ctl, "config"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        // A read that started before or during an action may predate it: wait for the next one.
-        if (root.acting || root.reloadPending) return
+        // A read that started before an action may predate it: wait for the next one.
+        if (configProc.stale) return
         try {
           var config = JSON.parse(text)
           if (config.mode) {
@@ -414,12 +419,11 @@ Panel {
     }
     stderr: StdioCollector { id: configErr; waitForEnd: true }
     onExited: function(exitCode) {
-      // A failed read whose result would have been discarded says nothing about the current config.
-      if (exitCode !== 0 && !root.acting && !root.reloadPending && configErr.text.trim() !== "")
+      // A stale read, failed or not, says nothing about the current config: read again, after
+      // the action if it still runs (loadConfig waits, and the action reads when it ends).
+      if (configProc.stale) root.loadConfig()
+      else if (exitCode !== 0 && configErr.text.trim() !== "")
         root.configError = configErr.text.trim().split("\n")[0]
-      if (!root.reloadPending) return
-      root.reloadPending = false
-      root.loadConfig()
     }
   }
 

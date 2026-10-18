@@ -1,6 +1,6 @@
 # Security Policy
 
-*Created: October 16, 2026 -- Updated: October 17, 2026*
+*Created: October 16, 2026 -- Updated: October 18, 2026*
 
 ## Reporting a vulnerability in the NymVPN plugin
 

@@ -1,19 +1,20 @@
 # Changelog
 
-*Created: October 16, 2026 -- Updated: October 17, 2026*
+*Created: October 16, 2026 -- Updated: October 18, 2026*
 
 All notable changes to the NymVPN Omarchy plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.2] - 2026-10-18
 
 ### Fixed
 
-- The gateway menus no longer offer only Auto and Random, with no error, when the gateway list cannot be fetched or comes back empty and none is cached: the card now says the list could not be fetched, still lets you switch between dVPN and Mixnet, and an empty list is never cached.
+- The gateway menus no longer offer only Auto and Random, with no error, when the gateway list cannot be fetched or comes back empty and none is cached: the card now says which list could not be fetched, keeps the other side's countries in Mixnet mode, still lets you switch between dVPN and Mixnet, and an empty list is never cached.
+- The card no longer shows Mixnet mode when NymVPN fails to report its mode: it shows the error instead.
 - Gateways reached over IPv6 show their address in the card and the tooltip, in dVPN and Mixnet mode.
-- With the `nym-vpnd` daemon stopped, "since" is when the daemon stopped, not the time of the last tunnel state it logged.
+- With the `nym-vpnd` daemon stopped, "since" is when the daemon stopped, not the time of the last tunnel state it logged, nor of an earlier stop while it is stopping.
 - The power switch stays on while NymVPN is offline waiting to reconnect or still connecting, so a click disconnects and stops it; before, it showed off and a click connected, and a pending connection could not be cancelled.
 - After a mode or gateway change, the card no longer keeps a configuration read before the change took effect.
-- Choosing **Auto** for a gateway keeps the jurisdiction exclusion set in the NymVPN app instead of turning it off, and a gateway setting the card does not offer, such as a region, is shown as set in the app instead of as Auto.
+- Choosing **Auto** for a gateway keeps the jurisdiction exclusion set in the NymVPN app instead of turning it off (for the exit, NymVPN has one setting for your country and the entry's country: if either was excluded, Auto excludes both), and a gateway setting the card does not offer, such as a region, is shown as set in the app instead of as Auto.
 - **Disable controls** no longer removes you from the `nym-vpn` group if you were in it before **Enable controls**. For controls enabled with 1.0.1 or earlier, it asks, and keeps the membership by default.
 
 ## [1.0.1] - 2026-10-17
@@ -40,5 +41,6 @@ All notable changes to the NymVPN Omarchy plugin. The format follows [Keep a Cha
 - Opt-in controls: connect and disconnect, mode, entry and exit gateway (Auto, Random, country), enabled and disabled from the card through a visible terminal, a group and a scoped polkit rule.
 - Settings `connectedColor`, `notifications`, `refreshIntervalSec`.
 
+[1.0.2]: https://github.com/phil71x/omarchy-nymvpn/releases/tag/v1.0.2
 [1.0.1]: https://github.com/phil71x/omarchy-nymvpn/releases/tag/v1.0.1
 [1.0.0]: https://github.com/phil71x/omarchy-nymvpn/releases/tag/v1.0.0

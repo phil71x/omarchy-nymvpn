@@ -6,16 +6,9 @@
 set -euo pipefail
 
 DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-ID=io.github.phil71x.nymvpn
+# shellcheck source-path=SCRIPTDIR source=controls.sh
+source "$DIR/controls.sh"
 RULE_SRC="$DIR/../polkit/50-$ID.rules"
-RULE_DST="/etc/polkit-1/rules.d/50-$ID.rules"
-GROUP=nym-vpn
-ACTION=com.nymvpn.vpnd.unix-access
-# Set when this script adds the user to GROUP, so disable-controls removes only what it added.
-MARKER="${XDG_STATE_HOME:-$HOME/.local/state}/$ID/added-to-group"
-
-# From the group database, so it is current without a new login; no pipe, so no pipefail race.
-in_group() { [[ " $(id -nG "$USER") " == *" $GROUP "* ]]; }
 
 cat <<EOF
 Enable NymVPN controls
